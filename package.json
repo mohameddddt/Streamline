@@ -74,7 +74,8 @@
       {
         "provider": "github",
         "owner": "mohameddddt",
-        "repo": "Streamline"
+        "repo": "Streamline",
+        "releaseType": "release"
       }
     ]
   },
