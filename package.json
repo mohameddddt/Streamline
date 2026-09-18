@@ -1,0 +1,85 @@
+{
+  "name": "streamline",
+  "version": "0.2.0",
+  "description": "Desktop movie & TV streamer powered by Stremio-compatible addons (Torrentio, TorrentsDB, ...)",
+  "main": "./out/main/index.js",
+  "author": "mohamedddt",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder --win",
+    "icon": "node scripts/make-icon.cjs"
+  },
+  "dependencies": {
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "electron-updater": "^6.8.9",
+    "ffmpeg-static": "^5.3.0",
+    "webtorrent": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^33.0.2",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.9"
+  },
+  "build": {
+    "appId": "com.streamline.app",
+    "productName": "Streamline",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "out/**/*",
+      "resources/icon.*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "resources/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Streamline"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "asarUnpack": [
+      "**/node_modules/ffmpeg-static/**",
+      "**/node_modules/@ffprobe-installer/**"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "mohameddddt",
+        "repo": "Streamline"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohameddddt/Streamline.git"
+  }
+}
