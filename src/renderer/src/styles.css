@@ -707,3 +707,123 @@ a {
   background: transparent;
 }
 
+/* ------------------------------------------------- stream row (play + save) */
+
+.stream-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  padding: 0;
+}
+
+.stream-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.icon-btn.download {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.icon-btn.download:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.season-tab .count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+}
+
+/* ----------------------------------------------------------- download rows */
+
+.dl-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.dl-art {
+  width: 58px;
+  flex: 0 0 auto;
+  aspect-ratio: 2 / 3;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--bg-elev-2);
+}
+
+.dl-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.dl-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dl-title {
+  font-weight: 650;
+  margin-bottom: 3px;
+}
+
+.dl-file {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-bottom: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-progress {
+  height: 6px;
+  border-radius: 6px;
+  background: var(--bg-elev-2);
+  overflow: hidden;
+  margin-bottom: 9px;
+}
+
+.dl-progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.dl-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+.dl-actions .btn,
+.dl-actions .icon-btn {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  text-align: center;
+  justify-content: center;
+}
+
