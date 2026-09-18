@@ -195,3 +195,31 @@ export interface TorrentStats {
   fileProgress: number
 }
 
+// ------------------------------------------------------------------ playback
+
+export type PlaybackMode = 'direct' | 'remux' | 'transcode'
+
+export type PlaybackSource =
+  | { kind: 'torrent'; infoHash: string; fileIdx: number }
+  | { kind: 'local'; filePath: string }
+  | { kind: 'url'; url: string }
+
+export interface ProbeResult {
+  duration: number
+  videoCodec: string
+  audioCodec: string
+  audioChannels: number
+  width: number
+  height: number
+  container: string
+}
+
+export interface PlaybackPlan {
+  mode: PlaybackMode
+  url: string
+  duration: number
+  reason: string
+  videoCodec: string
+  audioCodec: string
+}
+
