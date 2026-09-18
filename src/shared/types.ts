@@ -145,3 +145,53 @@ export interface ProgressEntry {
   finished?: boolean
 }
 
+export type DownloadStatus = 'downloading' | 'done' | 'paused' | 'error'
+
+export interface DownloadRecord {
+  infoHash: string
+  fileIdx: number
+  magnet: string
+  title: string
+  metaId: string
+  metaType: MediaType
+  poster?: string
+  season?: number
+  episode?: number
+  videoId?: string
+  fileName: string
+  filePath: string
+  length: number
+  addedAt: number
+  status: DownloadStatus
+  error?: string
+}
+
+export interface DownloadProgress {
+  infoHash: string
+  progress: number
+  downloaded: number
+  downloadSpeed: number
+  peers: number
+  timeRemaining: number
+}
+
+export interface TorrentHandle {
+  url: string
+  infoHash: string
+  fileIdx: number
+  fileName: string
+  fileLength: number
+  mime: string
+}
+
+export interface TorrentStats {
+  infoHash: string
+  progress: number
+  downloaded: number
+  downloadSpeed: number
+  uploadSpeed: number
+  peers: number
+  ready: boolean
+  fileProgress: number
+}
+
