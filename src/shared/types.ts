@@ -223,3 +223,28 @@ export interface PlaybackPlan {
   audioCodec: string
 }
 
+// ------------------------------------------------------------ trackers
+
+export type TrackerName = 'trakt' | 'simkl'
+
+export interface TrackerStatus {
+  trakt: boolean
+  simkl: boolean
+}
+
+export interface DeviceAuth {
+  deviceCode: string
+  userCode: string
+  verificationUrl: string
+  interval: number
+  expiresIn: number
+}
+
+// ------------------------------------------------------------- updates
+
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'current' | 'downloading' | 'ready' | 'error' | 'dev' | 'unconfigured'
+  version: string
+  notes: string
+  progress: number
+}
