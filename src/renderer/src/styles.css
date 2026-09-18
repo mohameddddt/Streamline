@@ -827,3 +827,141 @@ a {
   justify-content: center;
 }
 
+/* ------------------------------------------------------ player controls */
+
+.player video {
+  cursor: pointer;
+}
+
+.controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 40px 22px 16px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.92) 30%, transparent);
+  transition: opacity 0.25s;
+}
+
+.controls.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scrub {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.scrub::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  height: 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.scrub-fill {
+  position: relative;
+  height: 5px;
+  border-radius: 5px;
+  background: var(--accent);
+  z-index: 1;
+  min-width: 0;
+}
+
+.scrub-knob {
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
+}
+
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ctrl {
+  padding: 7px 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
+.ctrl:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.controls .time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: #dbe2ef;
+  white-space: nowrap;
+}
+
+.volume {
+  width: 90px;
+  padding: 0;
+  background: none;
+  border: none;
+  accent-color: var(--accent);
+}
+
+.controls .spacer {
+  flex: 1;
+}
+
+.sub-select {
+  width: auto;
+  max-width: 190px;
+  padding: 6px 9px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: transparent;
+}
+
+/* --------------------------------------------------------- device auth */
+
+.device-code {
+  font-family: 'Consolas', monospace;
+  font-size: 26px;
+  letter-spacing: 5px;
+  font-weight: 700;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: var(--bg-elev-2);
+  border: 1px dashed var(--accent);
+  text-align: center;
+  margin: 12px 0;
+}
+
+.tracker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  border-radius: 10px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.tracker-row .t-name {
+  font-weight: 650;
+  flex: 1;
+}
