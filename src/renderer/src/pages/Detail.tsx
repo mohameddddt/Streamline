@@ -28,6 +28,7 @@ function StreamDrawer({
   const [streams, setStreams] = useState<Stream[] | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [starting, setStarting] = useState<number | null>(null)
+  const [startPhase, setStartPhase] = useState('')
   const [downloading, setDownloading] = useState<number | null>(null)
   const [queued, setQueued] = useState<Set<number>>(new Set())
 
@@ -54,6 +55,12 @@ function StreamDrawer({
     }
   }
 
+  // Spinning up the torrent engine takes a moment; do it while they read the
+  // list rather than on the click, where it shows up as dead time.
+  useEffect(() => {
+    window.api.torrent.warm().catch(() => undefined)
+  }, [])
+
   useEffect(() => {
     let alive = true
     window.api.addons
@@ -67,7 +74,24 @@ function StreamDrawer({
 
   const play = async (stream: Stream, index: number): Promise<void> => {
     setStarting(index)
+    setStartPhase('connecting…')
     setError(null)
+    // Finding peers can take a while on a cold torrent. Poll the engine so the
+    // row shows peers and progress rather than looking like it hung.
+    let poll: number | undefined
+    if (stream.infoHash) {
+      const hash = stream.infoHash
+      poll = window.setInterval(() => {
+        window.api.torrent
+          .stats(hash)
+          .then((s) => {
+            if (!s) return
+            if (!s.ready) setStartPhase(`${s.peers} peers · reading torrent…`)
+            else setStartPhase(`${s.peers} peers · ${Math.round(s.fileProgress * 100)}%`)
+          })
+          .catch(() => undefined)
+      }, 700)
+    }
     try {
       let source: PlaybackSource
       let infoHash: string | undefined
@@ -78,6 +102,7 @@ function StreamDrawer({
         infoHash = handle.infoHash
         source = { kind: 'torrent', infoHash: handle.infoHash, fileIdx: handle.fileIdx }
       }
+      setStartPhase('checking the file…')
       // Inspect the file first: it decides direct play, remux, or full convert.
       const plan = await window.api.playback.plan(source)
       navigate('/player', {
@@ -102,7 +127,9 @@ function StreamDrawer({
     } catch (err) {
       setError(err)
     } finally {
+      if (poll !== undefined) window.clearInterval(poll)
       setStarting(null)
+      setStartPhase('')
     }
   }
 
@@ -139,7 +166,7 @@ function StreamDrawer({
               </button>
               <div className="stream-actions">
                 <span className={direct ? 'chip cached' : 'chip'}>
-                  {starting === i ? 'starting…' : direct ? 'instant' : 'torrent'}
+                  {starting === i ? startPhase || 'starting…' : direct ? 'instant' : 'torrent'}
                 </span>
                 <button
                   className="icon-btn download"

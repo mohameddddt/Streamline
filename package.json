@@ -79,6 +79,9 @@
       }
     ]
   },
+  "overrides": {
+    "uint8-util": "2.2.6"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/mohameddddt/Streamline.git"

@@ -107,6 +107,7 @@ function registerIpc(): void {
   )
   handle('addons:subtitleVtt', (url: string) => addons.fetchSubtitleAsVtt(url))
 
+  handle('torrent:warm', () => torrent.warmUp())
   handle('torrent:start', (stream: Stream) => torrent.startStream(stream))
   handle('torrent:stats', (infoHash: string) => torrent.getStats(infoHash))
   handle('torrent:remove', (infoHash: string) => torrent.removeTorrent(infoHash))
@@ -186,6 +187,12 @@ function registerIpc(): void {
 }
 
 // ----------------------------------------------------------------- lifecycle
+
+// A throw inside a torrent-engine callback lands here rather than on any promise
+// we await, so without this it disappears and the UI just waits forever.
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] unhandled rejection', reason)
+})
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()

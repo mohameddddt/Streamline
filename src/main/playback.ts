@@ -40,10 +40,14 @@ function runProbe(input: string, timeoutMs = 40000): Promise<any> {
       'json',
       '-show_format',
       '-show_streams',
+      // Over a torrent every probe byte is a piece we have to fetch from peers
+      // first, so these stay small. All we need off the header is the codec
+      // names, the container and the duration; 10MB of it bought us nothing but
+      // a slower first frame.
       '-analyzeduration',
-      '10000000',
+      '3000000',
       '-probesize',
-      '10000000',
+      '2000000',
       input
     ])
     let out = ''

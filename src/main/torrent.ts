@@ -75,6 +75,17 @@ export async function getClient(): Promise<any> {
   return client
 }
 
+/**
+ * webtorrent 2.x turned `client.get()` into an async method, and a pending
+ * Promise is truthy — so calling it directly makes every lookup "succeed" and
+ * hand back an object with no `.once`/`.files`. Match on the info hash instead,
+ * which is all `get()` does for a hash anyway, and stays synchronous.
+ */
+export function findTorrent(infoHash: string): any {
+  const hash = infoHash.toLowerCase()
+  return (client?.torrents ?? []).find((t: any) => t.infoHash === hash) ?? null
+}
+
 export async function ensureServer(): Promise<number> {
   if (server && port) return port
   server = http.createServer(handleRequest)
@@ -87,6 +98,16 @@ export async function ensureServer(): Promise<number> {
   port = (server.address() as AddressInfo).port
   console.log('[torrent] streaming on http://127.0.0.1:' + port)
   return port
+}
+
+/**
+ * Starting the engine costs about half a second of ESM import plus a DHT
+ * bootstrap, and that used to land on the first source the user clicked. The
+ * stream drawer calls this when it opens, so the click itself finds it ready.
+ */
+export async function warmUp(): Promise<void> {
+  await getClient()
+  await ensureServer()
 }
 
 // ------------------------------------------------------------- http serving
@@ -153,7 +174,7 @@ function serveTorrentFile(req: http.IncomingMessage, res: http.ServerResponse, u
     return
   }
   const [, infoHash, idxRaw] = match
-  const torrent = client?.get(infoHash.toLowerCase())
+  const torrent = findTorrent(infoHash)
   if (!torrent || !torrent.files?.length) {
     res.writeHead(404).end('torrent not ready')
     return
@@ -283,11 +304,15 @@ export async function startStream(stream: Stream): Promise<TorrentHandle> {
   const settings = getSettings()
   fs.mkdirSync(settings.downloadPath, { recursive: true })
 
-  let torrent = engine.get(infoHash)
+  let torrent = findTorrent(infoHash)
   if (!torrent) {
     torrent = engine.add(magnetFor(stream), {
       path: settings.downloadPath,
-      announce: TRACKERS
+      announce: TRACKERS,
+      // Every file is selected by default, so a season pack would split the
+      // first seconds of bandwidth across episodes nobody asked for. We pick
+      // the one file below, once the metadata says which files exist.
+      deselect: true
     })
     setMode(infoHash, 'stream')
   }
@@ -322,7 +347,7 @@ export function streamUrlFor(infoHash: string, fileIdx: number): string {
 }
 
 export function getStats(infoHash: string): TorrentStats | null {
-  const torrent = client?.get(infoHash.toLowerCase())
+  const torrent = findTorrent(infoHash)
   if (!torrent) return null
   const idx = selectedFile.get(infoHash.toLowerCase())
   const selected = idx === undefined ? undefined : torrent.files[idx]
@@ -340,7 +365,7 @@ export function getStats(infoHash: string): TorrentStats | null {
 
 export async function removeTorrent(infoHash: string, destroyStore = false): Promise<void> {
   if (!client) return
-  const torrent = client.get(infoHash.toLowerCase())
+  const torrent = findTorrent(infoHash)
   if (!torrent) return
   await new Promise<void>((resolve) => {
     client.remove(torrent, { destroyStore }, () => resolve())

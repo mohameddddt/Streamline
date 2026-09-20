@@ -11,6 +11,7 @@ import { getSettings } from './settings'
 import {
   TRACKERS,
   ensureServer,
+  findTorrent,
   getClient,
   magnetFor,
   pickFile,
@@ -95,7 +96,7 @@ async function addTorrent(magnet: string, infoHash: string): Promise<any> {
   const settings = getSettings()
   fs.mkdirSync(settings.downloadsPath, { recursive: true })
 
-  const existing = engine.get(infoHash)
+  const existing = findTorrent(infoHash)
   if (existing) {
     // It was added as a throwaway stream into the cache folder — re-add it into
     // the downloads folder instead, otherwise the file vanishes on exit.
@@ -154,11 +155,11 @@ export function list(): DownloadRecord[] {
 }
 
 export async function progress(): Promise<DownloadProgress[]> {
-  const engine = await getClient()
+  await getClient()
   const out: DownloadProgress[] = []
   for (const record of Object.values(all())) {
     if (record.status === 'done') continue
-    const torrent = engine.get(record.infoHash)
+    const torrent = findTorrent(record.infoHash)
     if (!torrent) continue
     const file = torrent.files?.[record.fileIdx]
     out.push({
@@ -227,8 +228,8 @@ export async function playSource(infoHash: string): Promise<PlaybackSource> {
   if (record.status === 'done' && fs.existsSync(record.filePath)) {
     return { kind: 'local', filePath: record.filePath }
   }
-  const engine = await getClient()
-  if (!engine.get(record.infoHash)) await resume(record.infoHash)
+  await getClient()
+  if (!findTorrent(record.infoHash)) await resume(record.infoHash)
   return { kind: 'torrent', infoHash: record.infoHash, fileIdx: record.fileIdx }
 }
 

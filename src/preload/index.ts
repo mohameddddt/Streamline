@@ -65,6 +65,7 @@ const api = {
     subtitleVtt: (url: string) => invoke<string>('addons:subtitleVtt', url)
   },
   torrent: {
+    warm: () => invoke<void>('torrent:warm'),
     start: (stream: Stream) => invoke<TorrentHandle>('torrent:start', stream),
     stats: (infoHash: string) => invoke<TorrentStats | null>('torrent:stats', infoHash),
     remove: (infoHash: string) => invoke<void>('torrent:remove', infoHash)
