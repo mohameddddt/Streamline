@@ -12,6 +12,36 @@ progress.
 
 Everything it uses is free. No account, no API key, nothing to pay for.
 
+**[Download for Windows](https://github.com/mohameddddt/Streamline/releases/latest)** ·
+**[Open the web version](https://mohameddddt.github.io/Streamline/)**
+
+![Streamline home: a rotating spotlight above your continue-watching row](docs/screenshots/web-home.jpg)
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![A title page with backdrop, logo, rating and actions](docs/screenshots/web-detail.jpg) | ![The episode list with progress, watched ticks and the next episode marked](docs/screenshots/web-episodes.jpg) |
+| **Title pages** — artwork, your rating, and the next episode to play | **Episodes** — progress per episode, watched ticks, *Up next* |
+| ![The source sheet ranking torrents by quality, codec, seeds and size](docs/screenshots/desktop-sources.jpg) | ![The player with its controls and speed menu](docs/screenshots/desktop-player-speed.jpg) |
+| **Smart sources** — quality filters, sorting and one-click *Play best* | **Player** — speed, subtitles, picture-in-picture, shortcuts |
+| ![The Ctrl+K search palette](docs/screenshots/web-search.jpg) | ![Insights: hours watched, titles finished and two charts](docs/screenshots/web-insights.jpg) |
+| **Search anywhere** — <kbd>Ctrl</kbd> <kbd>K</kbd> | **Insights** — your watching in numbers |
+| ![Browse with catalog and genre filters](docs/screenshots/web-browse.jpg) | ![Settings with accent themes and playback preferences](docs/screenshots/web-settings.jpg) |
+| **Browse** — every catalog by type and genre | **Settings** — six accent themes and playback preferences |
+
+On a phone the dock becomes a tab bar:
+
+<p>
+  <img src="docs/screenshots/web-phone-home.jpg" width="24%" alt="Home on a phone" />
+  <img src="docs/screenshots/web-phone-detail.jpg" width="24%" alt="A title page on a phone" />
+  <img src="docs/screenshots/web-phone-sources.jpg" width="24%" alt="Sources on a phone" />
+  <img src="docs/screenshots/web-phone-insights.jpg" width="24%" alt="Insights on a phone" />
+</p>
+
+More in [docs/screenshots/](docs/screenshots/). The player shots use *Big Buck Bunny* (© Blender
+Foundation, CC BY 3.0); posters and artwork come from Cinemeta.
+
 ## Getting an .exe
 
 ```bash
