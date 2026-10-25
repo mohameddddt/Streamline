@@ -1,6 +1,8 @@
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
+import { pathToFileURL } from 'url'
+import { app } from 'electron'
 import type { AddressInfo } from 'net'
 import type { Stream, TorrentHandle, TorrentStats } from '../shared/types'
 import { getSettings } from './settings'
@@ -11,6 +13,18 @@ import { getSettings } from './settings'
  * dynamic import at runtime instead of being rewritten into `require`.
  */
 const esmImport = new Function('s', 'return import(s)') as (s: string) => Promise<any>
+
+/**
+ * A bare `import('webtorrent')` from a Function has no referrer, so Node resolves
+ * it against the process's working directory. That is the project folder under
+ * `npm run dev`, but an installed app is launched from anywhere — the start menu,
+ * a shortcut, System32 — and the import fails, which is why picking a source only
+ * worked in dev. Resolve it from the app's own root (inside app.asar when
+ * packaged) and import by absolute file URL instead.
+ */
+function webtorrentUrl(): string {
+  return pathToFileURL(path.join(app.getAppPath(), 'node_modules', 'webtorrent', 'index.js')).href
+}
 
 export const TRACKERS = [
   'udp://tracker.opentrackr.org:1337/announce',
@@ -64,7 +78,7 @@ export function getMode(infoHash: string): 'stream' | 'download' | undefined {
 export async function getClient(): Promise<any> {
   if (client) return client
   const settings = getSettings()
-  const mod = await esmImport('webtorrent')
+  const mod = await esmImport(webtorrentUrl())
   const WebTorrent = mod.default ?? mod
   client = new WebTorrent({
     maxConns: settings.maxConns,
