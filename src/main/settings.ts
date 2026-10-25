@@ -1,36 +1,23 @@
 import { app } from 'electron'
+import { randomBytes } from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import type { Settings, LibraryItem, ProgressEntry } from '../shared/types'
-
-export const DEFAULT_ADDONS = [
-  'https://v3-cinemeta.strem.io/manifest.json',
-  'https://torrentio.strem.fun/manifest.json',
-  'https://torrentsdb.com/manifest.json',
-  'https://opensubtitles-v3.strem.io/manifest.json'
-]
+import type {
+  LibraryBackup,
+  LibraryItem,
+  ProgressEntry,
+  RatingEntry,
+  Settings,
+  Stream
+} from '../shared/types'
+import { applyDebridConfig, portableDefaults } from '../shared/config'
+import * as lib from '../shared/library'
 
 function defaults(): Settings {
   return {
-    addons: [...DEFAULT_ADDONS],
-    debridProvider: 'none',
-    debridApiKey: '',
-    tmdbApiKey: '',
+    ...portableDefaults(),
     downloadPath: path.join(app.getPath('temp'), 'streamline'),
-    downloadsPath: path.join(app.getPath('downloads'), 'Streamline'),
-    externalPlayerPath: '',
-    maxConns: 80,
-    downloadLimit: 0,
-    uploadLimit: 262144,
-    deleteOnExit: true,
-    preferredLang: 'eng',
-    traktClientId: '',
-    traktClientSecret: '',
-    traktToken: '',
-    traktRefresh: '',
-    simklClientId: '',
-    simklToken: '',
-    autoUpdate: true
+    downloadsPath: path.join(app.getPath('downloads'), 'Streamline')
   }
 }
 
@@ -59,7 +46,14 @@ function writeJson(name: string, data: unknown): void {
 let cache: Settings | null = null
 
 export function getSettings(): Settings {
-  if (!cache) cache = readJson<Settings>('settings.json', defaults())
+  if (!cache) {
+    cache = readJson<Settings>('settings.json', defaults())
+    // The companion token is a secret; mint one the first time it is needed.
+    if (!cache.companionToken) {
+      cache.companionToken = randomBytes(18).toString('base64url')
+      writeJson('settings.json', cache)
+    }
+  }
   return cache
 }
 
@@ -73,98 +67,52 @@ export function saveSettings(patch: Partial<Settings>): Settings {
   return cache
 }
 
-/**
- * Torrentio (and the addons that clone its config format) take options as a
- * `key=value|key=value` path segment before `/manifest.json`. We rewrite only the
- * debrid pair so a user's hand-tuned provider/sort options survive.
- */
-export function applyDebridConfig(url: string, provider: string, apiKey: string): string {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return url
-  }
-  if (!/^\/.*manifest\.json$/.test(parsed.pathname)) return url
-
-  const segments = parsed.pathname.replace(/^\//, '').split('/')
-  const manifest = segments.pop() as string
-  const config = segments.join('/')
-  const pairs = config ? config.split('|').filter(Boolean) : []
-  const known = [
-    'realdebrid',
-    'alldebrid',
-    'premiumize',
-    'torbox',
-    'debridlink',
-    'offcloud',
-    'easydebrid',
-    'putio'
-  ]
-  const kept = pairs.filter((p) => !known.includes(p.split('=')[0]))
-  if (provider !== 'none' && apiKey) kept.push(`${provider}=${apiKey}`)
-  parsed.pathname = '/' + [...(kept.length ? [kept.join('|')] : []), manifest].join('/')
-  return parsed.toString()
+export function regenerateCompanionToken(): Settings {
+  return saveSettings({ companionToken: randomBytes(18).toString('base64url') })
 }
 
 // ---------------------------------------------------------------- library
 
-interface LibraryFile {
-  items: Record<string, LibraryItem>
-  progress: Record<string, ProgressEntry>
-}
+let libCache: lib.LibraryFile | null = null
 
-let libCache: LibraryFile | null = null
-
-function library(): LibraryFile {
-  if (!libCache) libCache = readJson<LibraryFile>('library.json', { items: {}, progress: {} })
+function library(): lib.LibraryFile {
+  if (!libCache) libCache = readJson<lib.LibraryFile>('library.json', lib.emptyLibrary())
   return libCache
 }
 
-function persistLibrary(): void {
+/** Runs a change against the library and writes it out. */
+function change<R>(fn: (l: lib.LibraryFile) => R): R {
+  const result = fn(library())
   writeJson('library.json', library())
+  return result
 }
 
-export function getLibrary(): { items: LibraryItem[]; progress: ProgressEntry[] } {
-  const lib = library()
-  return {
-    items: Object.values(lib.items).sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)),
-    progress: Object.values(lib.progress).sort((a, b) => b.updatedAt - a.updatedAt)
-  }
+export function getLibrary(): {
+  items: LibraryItem[]
+  progress: ProgressEntry[]
+  ratings: RatingEntry[]
+} {
+  return lib.listLibrary(library())
 }
 
-export function toggleFavorite(item: LibraryItem): boolean {
-  const lib = library()
-  const key = `${item.type}:${item.id}`
-  if (lib.items[key]) {
-    delete lib.items[key]
-    persistLibrary()
-    return false
-  }
-  lib.items[key] = { ...item, key, favorite: true, addedAt: Date.now() }
-  persistLibrary()
-  return true
-}
-
-export function setProgress(entry: ProgressEntry): void {
-  const lib = library()
-  // Past 95% counts as watched. The entry stays so it can show up as history.
-  const finished = entry.duration > 0 && entry.time / entry.duration > 0.95
-  lib.progress[entry.key] = { ...entry, finished, updatedAt: Date.now() }
-  persistLibrary()
-}
-
-export function markWatched(key: string, watched: boolean): void {
-  const lib = library()
-  const entry = lib.progress[key]
-  if (!entry) return
-  entry.finished = watched
-  entry.updatedAt = Date.now()
-  persistLibrary()
-}
-
-export function clearProgress(key: string): void {
-  const lib = library()
-  delete lib.progress[key]
-  persistLibrary()
-}
+export const getLastStream = (key: string): Stream | null => lib.getLastStream(library(), key)
+export const setLastStream = (key: string, stream: Stream): void =>
+  change((l) => lib.setLastStream(l, key, stream))
+export const applyImport = (batch: Parameters<typeof lib.mergeImport>[1]): void =>
+  change((l) => lib.mergeImport(l, batch))
+export const toggleFavorite = (item: LibraryItem): boolean =>
+  change((l) => lib.toggleFavorite(l, item))
+export const setProgress = (entry: ProgressEntry): void => change((l) => lib.setProgress(l, entry))
+export const markWatched = (
+  key: string,
+  watched: boolean,
+  seed?: Parameters<typeof lib.markWatched>[3]
+): void => change((l) => lib.markWatched(l, key, watched, seed))
+export const clearProgress = (key: string): void => change((l) => lib.clearProgress(l, key))
+export const setRating = (
+  entry: Parameters<typeof lib.setRating>[1],
+  rating: number | null
+): void => change((l) => lib.setRating(l, entry, rating))
+export const makeBackup = (): LibraryBackup => lib.makeBackup(library())
+export const restoreBackup = (backup: LibraryBackup): number =>
+  change((l) => lib.mergeBackup(l, backup))

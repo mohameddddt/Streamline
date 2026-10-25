@@ -117,7 +117,21 @@ export interface Settings {
   simklClientId: string
   simklToken: string
   autoUpdate: boolean
+  /** One of ACCENTS' ids. */
+  accent: string
+  /** What "Play best" aims for when several resolutions are on offer. */
+  preferredQuality: QualityPref
+  /** Roll straight into the next episode when one ends. */
+  autoplayNext: boolean
+  /** Desktop: lets the web version drive this machine's torrent engine. */
+  companionEnabled: boolean
+  companionToken: string
+  /** Web: where the desktop companion is, and the token it showed. */
+  engineUrl: string
+  engineToken: string
 }
+
+export type QualityPref = '2160p' | '1080p' | '720p' | 'any'
 
 export interface LibraryItem {
   key: string
@@ -247,4 +261,68 @@ export interface UpdateState {
   version: string
   notes: string
   progress: number
+}
+
+// -------------------------------------------------------- ratings & imports
+
+export interface RatingEntry {
+  key: string
+  id: string
+  type: MediaType
+  name: string
+  poster?: string
+  year?: string
+  /** Always on a 0-10 scale, whatever the source service used. */
+  rating: number
+  ratedAt: number
+  source: string
+}
+
+export type ImportService = 'letterboxd' | 'serializd' | 'imdb' | 'csv' | 'trakt' | 'simkl'
+
+export interface ImportSummary {
+  watched: number
+  rated: number
+  watchlist: number
+  unmatched: string[]
+}
+
+export interface ImportStatus {
+  state: 'idle' | 'running' | 'done' | 'error'
+  phase: string
+  total: number
+  done: number
+  summary?: ImportSummary
+  error?: string
+}
+
+// ------------------------------------------------------------- platform
+
+export type Platform = 'desktop' | 'web'
+
+/**
+ * The bridge between the web version and the desktop app's torrent engine.
+ * On desktop it describes the server this app hosts; on the web, the one it
+ * talks to.
+ */
+export interface CompanionInfo {
+  role: 'host' | 'client'
+  enabled: boolean
+  url: string
+  token: string
+  /** Client only: whether the last handshake succeeded. */
+  connected: boolean
+  version?: string
+  error?: string
+}
+
+// ------------------------------------------------------------- backups
+
+export interface LibraryBackup {
+  app: 'streamline'
+  version: 1
+  exportedAt: number
+  items: LibraryItem[]
+  progress: ProgressEntry[]
+  ratings: RatingEntry[]
 }
