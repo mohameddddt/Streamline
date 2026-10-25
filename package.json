@@ -1,7 +1,7 @@
 {
   "name": "streamline",
-  "version": "0.2.0",
-  "description": "Desktop movie & TV streamer powered by Stremio-compatible addons (Torrentio, TorrentsDB, ...)",
+  "version": "0.3.0",
+  "description": "Movie & TV streamer for desktop and the web, powered by Stremio-compatible addons (Torrentio, TorrentsDB, ...)",
   "main": "./out/main/index.js",
   "author": "mohamedddt",
   "license": "MIT",
@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "electron-vite build",
     "start": "electron-vite preview",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
+    "preview:web": "vite preview --config vite.web.config.ts",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder --win",
     "icon": "node scripts/make-icon.cjs"
