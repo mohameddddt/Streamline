@@ -7,6 +7,9 @@ import * as downloads from './downloads'
 import * as playback from './playback'
 import * as trackers from './trackers'
 import * as updater from './updater'
+import * as importer from './importer'
+import * as companion from './companion'
+import fs from 'fs'
 import {
   getSettings,
   saveSettings,
@@ -14,10 +17,18 @@ import {
   toggleFavorite,
   setProgress,
   clearProgress,
-  markWatched
+  markWatched,
+  getLastStream,
+  setLastStream,
+  setRating,
+  makeBackup,
+  restoreBackup,
+  regenerateCompanionToken
 } from './settings'
 import type {
+  LibraryBackup,
   DeviceAuth,
+  ImportService,
   LibraryItem,
   PlaybackSource,
   ProgressEntry,
@@ -37,7 +48,7 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#0b0d12',
+    backgroundColor: '#0b0c0f',
     title: 'Streamline',
     icon: path.join(__dirname, '../../resources/icon.png'),
     webPreferences: {
@@ -74,9 +85,10 @@ function registerIpc(): void {
   }
 
   handle('settings:get', () => getSettings())
-  handle('settings:set', (patch: Partial<Settings>) => {
+  handle('settings:set', async (patch: Partial<Settings>) => {
     const next = saveSettings(patch)
     addons.forgetManifests()
+    if ('companionEnabled' in patch) await companion.sync()
     return next
   })
   handle('settings:pickFolder', async () => {
@@ -116,7 +128,56 @@ function registerIpc(): void {
   handle('library:toggleFavorite', (item: LibraryItem) => toggleFavorite(item))
   handle('library:setProgress', (entry: ProgressEntry) => setProgress(entry))
   handle('library:clearProgress', (key: string) => clearProgress(key))
-  handle('library:markWatched', (key: string, watched: boolean) => markWatched(key, watched))
+  handle(
+    'library:markWatched',
+    (key: string, watched: boolean, seed?: Parameters<typeof markWatched>[2]) =>
+      markWatched(key, watched, seed)
+  )
+  handle('library:setRating', (entry: Parameters<typeof setRating>[0], rating: number | null) =>
+    setRating(entry, rating)
+  )
+  handle('library:backup', async () => {
+    const stamp = new Date().toISOString().slice(0, 10)
+    const res = await dialog.showSaveDialog({
+      defaultPath: `streamline-library-${stamp}.json`,
+      filters: [{ name: 'Streamline backup', extensions: ['json'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    const backup = makeBackup()
+    fs.writeFileSync(res.filePath, JSON.stringify(backup, null, 2), 'utf8')
+    return { count: backup.items.length + backup.progress.length + backup.ratings.length }
+  })
+  handle('library:restore', async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Streamline backup', extensions: ['json'] }]
+    })
+    if (res.canceled || !res.filePaths[0]) return null
+    const backup = JSON.parse(fs.readFileSync(res.filePaths[0], 'utf8')) as LibraryBackup
+    return { count: restoreBackup(backup) }
+  })
+
+  handle('companion:info', () => companion.info())
+  handle('companion:configure', async (patch: { enabled?: boolean; regenerate?: boolean }) => {
+    if (patch.regenerate) regenerateCompanionToken()
+    if (patch.enabled !== undefined) saveSettings({ companionEnabled: patch.enabled })
+    return companion.sync()
+  })
+
+  handle('library:getLastStream', (key: string) => getLastStream(key))
+  handle('library:setLastStream', (key: string, stream: Stream) => setLastStream(key, stream))
+
+  handle('import:pickFiles', async () => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Exports', extensions: ['zip', 'csv'] }]
+    })
+    return res.canceled ? [] : res.filePaths
+  })
+  handle('import:start', (service: ImportService, paths: string[]) =>
+    importer.start(service, paths)
+  )
+  handle('import:status', () => importer.getStatus())
 
   handle('downloads:list', () => downloads.list())
   handle('downloads:progress', () => downloads.progress())
@@ -210,6 +271,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow()
     if (getSettings().autoUpdate) updater.checkOnStartup()
     downloads.resumeAll().catch((err) => console.warn('[downloads] resumeAll', err))
+    companion.sync().catch((err) => console.warn('[companion]', err.message))
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
@@ -225,6 +287,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault()
     cleaning = true
     playback.killAll()
+    companion.stop().catch(() => undefined)
     torrent.shutdown().finally(() => app.quit())
   })
 }

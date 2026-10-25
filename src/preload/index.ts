@@ -11,28 +11,27 @@ import type {
   Stream,
   SubtitleTrack,
   DeviceAuth,
+  ImportService,
+  ImportStatus,
+  RatingEntry,
   PlaybackPlan,
   PlaybackSource,
   TrackerName,
   TrackerStatus,
   UpdateState,
   TorrentHandle,
-  TorrentStats
+  TorrentStats,
+  CompanionInfo,
+  Platform,
+  ProgressEntry as SeedEntry,
+  RatingEntry as RatedEntry
 } from '../shared/types'
+import type { CatalogRef } from '../shared/addons'
+
+export type { CatalogRef }
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   ipcRenderer.invoke(channel, ...args) as Promise<T>
-
-export interface CatalogRef {
-  addonUrl: string
-  addonName: string
-  type: string
-  id: string
-  name: string
-  genres: string[]
-  searchable: boolean
-  requiresSearch: boolean
-}
 
 export interface DownloadInfo {
   title: string
@@ -44,7 +43,14 @@ export interface DownloadInfo {
   videoId?: string
 }
 
+/** Describes an episode or film that has no progress entry yet. */
+export type WatchSeed = Omit<SeedEntry, 'time' | 'duration' | 'updatedAt'>
+export type RatingTarget = Omit<RatedEntry, 'rating' | 'ratedAt' | 'source'>
+
+const platform = 'desktop' as Platform
+
 const api = {
+  platform,
   settings: {
     get: () => invoke<Settings>('settings:get'),
     set: (patch: Partial<Settings>) => invoke<Settings>('settings:set', patch),
@@ -71,12 +77,35 @@ const api = {
     remove: (infoHash: string) => invoke<void>('torrent:remove', infoHash)
   },
   library: {
-    get: () => invoke<{ items: LibraryItem[]; progress: ProgressEntry[] }>('library:get'),
+    get: () =>
+      invoke<{ items: LibraryItem[]; progress: ProgressEntry[]; ratings: RatingEntry[] }>(
+        'library:get'
+      ),
+    getLastStream: (key: string) => invoke<Stream | null>('library:getLastStream', key),
+    setLastStream: (key: string, stream: Stream) =>
+      invoke<void>('library:setLastStream', key, stream),
     toggleFavorite: (item: LibraryItem) => invoke<boolean>('library:toggleFavorite', item),
     setProgress: (entry: ProgressEntry) => invoke<void>('library:setProgress', entry),
     clearProgress: (key: string) => invoke<void>('library:clearProgress', key),
-    markWatched: (key: string, watched: boolean) =>
-      invoke<void>('library:markWatched', key, watched)
+    markWatched: (key: string, watched: boolean, seed?: WatchSeed) =>
+      invoke<void>('library:markWatched', key, watched, seed),
+    setRating: (entry: RatingTarget, rating: number | null) =>
+      invoke<void>('library:setRating', entry, rating),
+    /** Saves the whole library to a JSON file the user picks. Null if cancelled. */
+    backup: () => invoke<{ count: number } | null>('library:backup'),
+    /** Merges a backup file back in. Null if cancelled. */
+    restore: () => invoke<{ count: number } | null>('library:restore')
+  },
+  companion: {
+    info: () => invoke<CompanionInfo>('companion:info'),
+    configure: (patch: { enabled?: boolean; regenerate?: boolean; url?: string; token?: string }) =>
+      invoke<CompanionInfo>('companion:configure', patch)
+  },
+  importer: {
+    pickFiles: () => invoke<string[]>('import:pickFiles'),
+    start: (service: ImportService, paths: string[]) =>
+      invoke<void>('import:start', service, paths),
+    status: () => invoke<ImportStatus>('import:status')
   },
   downloads: {
     list: () => invoke<DownloadRecord[]>('downloads:list'),
