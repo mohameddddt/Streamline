@@ -1,28 +1,47 @@
 /**
- * Generates resources/icon.ico (256x256) with no image dependencies.
- * A rounded purple tile with a play triangle — plain shapes, drawn from scratch.
+ * Generates resources/icon.png and icon.ico (256x256) with no image dependencies.
+ * A near-black tile with a volt play triangle trailing three light streamlines.
+ * Keep the geometry in step with src/renderer/src/components/Logo.tsx.
  */
 const fs = require('fs')
 const path = require('path')
 const zlib = require('zlib')
 
 const SIZE = 256
-const RADIUS = 56
-const SUB = 3 // subpixel samples per axis, for antialiasing
+const RADIUS = 64
+const SUB = 4 // subpixel samples per axis, for antialiasing
 
-const TRI = [
-  [104, 70],
-  [104, 186],
-  [194, 128]
+const TILE = [0x15, 0x17, 0x1c]
+const LIGHT = [0xee, 0xf0, 0xf4]
+const VOLT = [0xd7, 0xff, 0x3d]
+
+// [x, y, width, height, opacity] — pill-shaped streamlines
+const BARS = [
+  [34, 88, 46, 14, 0.5],
+  [22, 121, 70, 14, 1],
+  [34, 154, 46, 14, 0.5]
 ]
+const TRI = [
+  [104, 64],
+  [104, 192],
+  [212, 128]
+]
+const TRI_ROUND = 5 // grows the triangle by this radius and rounds its corners
 
-function insideRoundedRect(x, y) {
-  if (x < 0 || y < 0 || x > SIZE || y > SIZE) return false
-  const cx = Math.min(Math.max(x, RADIUS), SIZE - RADIUS)
-  const cy = Math.min(Math.max(y, RADIUS), SIZE - RADIUS)
+function insideRoundedRect(x, y, rx, ry, w, h, r) {
+  if (x < rx || y < ry || x > rx + w || y > ry + h) return false
+  const cx = Math.min(Math.max(x, rx + r), rx + w - r)
+  const cy = Math.min(Math.max(y, ry + r), ry + h - r)
   const dx = x - cx
   const dy = y - cy
-  return dx * dx + dy * dy <= RADIUS * RADIUS
+  return dx * dx + dy * dy <= r * r
+}
+
+function distToSegment(px, py, [ax, ay], [bx, by]) {
+  const abx = bx - ax
+  const aby = by - ay
+  const t = Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby)))
+  return Math.hypot(px - (ax + t * abx), py - (ay + t * aby))
 }
 
 function insideTriangle(x, y) {
@@ -30,8 +49,13 @@ function insideTriangle(x, y) {
   const d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
   const a = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / d
   const b = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / d
-  const c = 1 - a - b
-  return a >= 0 && b >= 0 && c >= 0
+  if (a >= 0 && b >= 0 && 1 - a - b >= 0) return true
+  // Just outside: within the rounding radius of any edge.
+  return (
+    distToSegment(x, y, TRI[0], TRI[1]) <= TRI_ROUND ||
+    distToSegment(x, y, TRI[1], TRI[2]) <= TRI_ROUND ||
+    distToSegment(x, y, TRI[2], TRI[0]) <= TRI_ROUND
+  )
 }
 
 function coverage(px, py, test) {
@@ -44,8 +68,8 @@ function coverage(px, py, test) {
   return hits / (SUB * SUB)
 }
 
-function mix(a, b, t) {
-  return Math.round(a + (b - a) * t)
+function over(base, top, alpha) {
+  return base.map((c, i) => Math.round(c + (top[i] - c) * alpha))
 }
 
 function buildPixels() {
@@ -55,21 +79,17 @@ function buildPixels() {
   for (let y = 0; y < SIZE; y++) {
     raw[o++] = 0
     for (let x = 0; x < SIZE; x++) {
-      const tileA = coverage(x, y, insideRoundedRect)
-      const triA = coverage(x, y, insideTriangle)
-      // Vertical gradient across the tile.
-      const t = y / SIZE
-      let r = mix(0x8b, 0x4b, t)
-      let g = mix(0x6b, 0x31, t)
-      let b = mix(0xff, 0xc9, t)
-      if (triA > 0) {
-        r = mix(r, 0xff, triA)
-        g = mix(g, 0xff, triA)
-        b = mix(b, 0xff, triA)
+      const tileA = coverage(x, y, (px, py) => insideRoundedRect(px, py, 0, 0, SIZE, SIZE, RADIUS))
+      let rgb = TILE
+      for (const [bx, by, bw, bh, op] of BARS) {
+        const a = coverage(x, y, (px, py) => insideRoundedRect(px, py, bx, by, bw, bh, bh / 2))
+        if (a > 0) rgb = over(rgb, LIGHT, a * op)
       }
-      raw[o++] = r
-      raw[o++] = g
-      raw[o++] = b
+      const triA = coverage(x, y, insideTriangle)
+      if (triA > 0) rgb = over(rgb, VOLT, triA)
+      raw[o++] = rgb[0]
+      raw[o++] = rgb[1]
+      raw[o++] = rgb[2]
       raw[o++] = Math.round(tileA * 255)
     }
   }
