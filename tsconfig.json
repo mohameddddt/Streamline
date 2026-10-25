@@ -13,8 +13,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
-    "baseUrl": ".",
-    "paths": { "@shared/*": ["src/shared/*"] }
+    "paths": { "@shared/*": ["./src/shared/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "electron.vite.config.ts"]
 }
