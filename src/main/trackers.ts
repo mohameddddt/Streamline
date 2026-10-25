@@ -143,6 +143,38 @@ function simklHeaders(): Record<string, string> {
   }
 }
 
+// ------------------------------------------------------------ history pulls
+
+/** Every page of a Trakt sync list. Trakt sends the page count as a header. */
+export async function traktFetchAll(path: string): Promise<any[]> {
+  const out: any[] = []
+  let page = 1
+  let pages = 1
+  do {
+    const res = await fetch(`${TRAKT_API}${path}?page=${page}&limit=1000`, {
+      headers: traktHeaders()
+    })
+    if (!res.ok) throw new Error(`Trakt returned ${res.status} for ${path}.`)
+    out.push(...((await res.json()) as any[]))
+    pages = Number(res.headers.get('x-pagination-page-count')) || 1
+    page++
+  } while (page <= pages)
+  return out
+}
+
+/** Simkl returns a user's whole list (movies, shows, anime) in one call. */
+export async function simklFetchAll(): Promise<{
+  movies?: any[]
+  shows?: any[]
+  anime?: any[]
+}> {
+  const res = await fetch(`${SIMKL_API}/sync/all-items/?extended=full`, {
+    headers: simklHeaders()
+  })
+  if (!res.ok) throw new Error(`Simkl returned ${res.status}.`)
+  return (await res.json()) ?? {}
+}
+
 // ------------------------------------------------------------------- status
 
 export function status(): TrackerStatus {
