@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { ACCENTS } from '../../../shared/config'
 
 export const isWeb = (): boolean => window.api.platform === 'web'
@@ -7,6 +8,22 @@ export function applyAccent(id: string): void {
   const root = document.documentElement.style
   root.setProperty('--accent', accent.color)
   root.setProperty('--accent-ink', accent.ink)
+}
+
+/** Whether the computer has a network connection, kept current. */
+export function useOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine)
+  useEffect(() => {
+    const on = (): void => setOnline(true)
+    const off = (): void => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => {
+      window.removeEventListener('online', on)
+      window.removeEventListener('offline', off)
+    }
+  }, [])
+  return online
 }
 
 // ---------------------------------------------------------------- toasts
@@ -29,6 +46,41 @@ export function toast(text: string, tone: ToastMessage['tone'] = 'info'): void {
 export function onToast(fn: (t: ToastMessage) => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
+}
+
+// --------------------------------------------------------------- dialogs
+
+export interface DialogAction {
+  id: string
+  label: string
+  tone?: 'primary' | 'danger' | 'plain'
+}
+
+export interface DialogRequest {
+  id: number
+  title: string
+  message?: string
+  actions: DialogAction[]
+  resolve: (choice: string | null) => void
+}
+
+const dialogListeners = new Set<(d: DialogRequest) => void>()
+
+/**
+ * Asks in an in-app dialog — never the operating system's — and resolves with
+ * the chosen action's id, or null when it is dismissed.
+ */
+export function ask(options: Omit<DialogRequest, 'id' | 'resolve'>): Promise<string | null> {
+  return new Promise((resolve) => {
+    const request = { ...options, id: nextId++, resolve }
+    if (!dialogListeners.size) return resolve(null)
+    dialogListeners.forEach((fn) => fn(request))
+  })
+}
+
+export function onDialog(fn: (d: DialogRequest) => void): () => void {
+  dialogListeners.add(fn)
+  return () => dialogListeners.delete(fn)
 }
 
 export function errorText(error: unknown): string {
