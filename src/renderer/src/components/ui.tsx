@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { MetaPreview } from '../../../shared/types'
-import { detailPath, errorText, onToast, type ToastMessage } from '../lib/app'
+import { createPortal } from 'react-dom'
+import { detailPath, errorText, onDialog, onToast, type DialogRequest, type ToastMessage } from '../lib/app'
 import { Icon, type IconName } from './Icon'
 
 export function Spinner({ label }: { label?: string }): JSX.Element {
@@ -54,11 +55,14 @@ export function MetaCard({ meta, subtitle, progress, rating, onClick }: CardProp
   const navigate = useNavigate()
   const go = (): void => (onClick ? onClick() : navigate(detailPath(meta.type, meta.id)))
   const sub = subtitle ?? [meta.releaseInfo, meta.type === 'series' ? 'Series' : ''].filter(Boolean).join(' · ')
+  // Offline, or an artwork host that lost the image: show the name, not a broken icon.
+  const [broken, setBroken] = useState(false)
+  useEffect(() => setBroken(false), [meta.poster])
   return (
     <button className="card" onClick={go} title={meta.name}>
       <div className="card-art">
-        {meta.poster ? (
-          <img src={meta.poster} loading="lazy" alt="" />
+        {meta.poster && !broken ? (
+          <img src={meta.poster} loading="lazy" alt="" onError={() => setBroken(true)} />
         ) : (
           <div className="fallback">{meta.name}</div>
         )}
@@ -322,6 +326,201 @@ export function Toasts(): JSX.Element {
         </div>
       ))}
     </div>
+  )
+}
+
+/** Hosts the dialogs `ask()` opens. One at a time; later ones queue. */
+export function Dialogs(): JSX.Element | null {
+  const [queue, setQueue] = useState<DialogRequest[]>([])
+  const current = queue[0]
+  const panel = useRef<HTMLDivElement>(null)
+
+  useEffect(() => onDialog((d) => setQueue((q) => [...q, d])), [])
+
+  const close = (choice: string | null): void => {
+    if (!current) return
+    current.resolve(choice)
+    setQueue((q) => q.slice(1))
+  }
+
+  useEffect(() => {
+    if (!current) return
+    // The first non-destructive action gets focus, so Enter never deletes by accident.
+    const buttons = panel.current?.querySelectorAll<HTMLButtonElement>('.dialog-actions button')
+    const safe = [...(buttons ?? [])].find((b) => !b.classList.contains('danger'))
+    safe?.focus()
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        close(null)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current])
+
+  if (!current) return null
+  return createPortal(
+    <div className="dialog-backdrop" onMouseDown={() => close(null)}>
+      <div
+        ref={panel}
+        className="dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={`dialog-${current.id}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h3 id={`dialog-${current.id}`}>{current.title}</h3>
+        {current.message && <p>{current.message}</p>}
+        <div className="dialog-actions">
+          {current.actions.map((a) => (
+            <button
+              key={a.id}
+              className={'btn ' + (a.tone === 'primary' ? 'primary' : a.tone === 'danger' ? 'danger' : 'glass')}
+              onClick={() => close(a.id)}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+/**
+ * A styled replacement for `<select>`: the native one ignores the app's theme
+ * and draws a grey OS menu. The list opens in a portal, so a scrolling or
+ * clipped parent (the source sheet) cannot cut it off.
+ */
+export function Select<T extends string>({
+  value,
+  options,
+  onChange,
+  disabled,
+  size = 'md',
+  ariaLabel
+}: {
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  ariaLabel?: string
+}): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const current = options.find((o) => o.value === value) ?? options[0]
+
+  const show = (): void => {
+    if (disabled || !button.current) return
+    setRect(button.current.getBoundingClientRect())
+    setActive(Math.max(0, options.findIndex((o) => o.value === value)))
+    setOpen(true)
+  }
+
+  const choose = (i: number): void => {
+    const picked = options[i]
+    setOpen(false)
+    button.current?.focus()
+    if (picked && picked.value !== value) onChange(picked.value)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent): void => {
+      const t = e.target as Node
+      if (!menu.current?.contains(t) && !button.current?.contains(t)) setOpen(false)
+    }
+    const reflow = (): void => setOpen(false)
+    window.addEventListener('mousedown', away)
+    window.addEventListener('resize', reflow)
+    window.addEventListener('scroll', reflow, true)
+    return () => {
+      window.removeEventListener('mousedown', away)
+      window.removeEventListener('resize', reflow)
+      window.removeEventListener('scroll', reflow, true)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (open) menu.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, active])
+
+  const onKey = (e: React.KeyboardEvent): void => {
+    if (!open) {
+      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
+        e.preventDefault()
+        show()
+      }
+      return
+    }
+    // Keep Escape from also closing whatever the select sits in.
+    e.stopPropagation()
+    if (e.key === 'Escape' || e.key === 'Tab') setOpen(false)
+    else if (e.key === 'ArrowDown') setActive((i) => Math.min(options.length - 1, i + 1))
+    else if (e.key === 'ArrowUp') setActive((i) => Math.max(0, i - 1))
+    else if (e.key === 'Home') setActive(0)
+    else if (e.key === 'End') setActive(options.length - 1)
+    else if (e.key === 'Enter' || e.key === ' ') choose(active)
+    else return
+    e.preventDefault()
+  }
+
+  // Opens upwards when there is no room below.
+  const below = rect ? window.innerHeight - rect.bottom : 0
+  const up = rect ? below < Math.min(280, options.length * 38 + 12) && rect.top > below : false
+  const style: React.CSSProperties = rect
+    ? {
+        left: Math.min(rect.left, window.innerWidth - Math.max(rect.width, 180) - 8),
+        minWidth: rect.width,
+        ...(up ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 })
+      }
+    : {}
+
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        className={`select-btn ${size}` + (open ? ' open' : '')}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={onKey}
+      >
+        <span className="select-value">{current?.label}</span>
+        <Icon name="chevronDown" size={16} className="select-chevron" />
+      </button>
+      {open &&
+        createPortal(
+          <div ref={menu} className={'select-menu' + (up ? ' up' : '')} role="listbox" style={style}>
+            {options.map((o, i) => (
+              <button
+                key={o.value}
+                type="button"
+                data-i={i}
+                role="option"
+                aria-selected={o.value === value}
+                className={'select-option' + (i === active ? ' active' : '') + (o.value === value ? ' chosen' : '')}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(i)}
+              >
+                <span>{o.label}</span>
+                {o.value === value && <Icon name="check" size={15} />}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
   )
 }
 
