@@ -74,6 +74,8 @@ export interface Stream {
   description?: string
   behaviorHints?: { bingeGroup?: string; filename?: string; notWebReady?: boolean }
   sources?: string[]
+  /** A file on this computer (the local library). Played straight off disk. */
+  filePath?: string
   /** Injected by us */
   addonName?: string
   addonId?: string
@@ -129,6 +131,10 @@ export interface Settings {
   /** Web: where the desktop companion is, and the token it showed. */
   engineUrl: string
   engineToken: string
+  /** Desktop: folders the local library scans for films and episodes. */
+  localFolders: string[]
+  /** Built-in addons already offered once, so removing one sticks. */
+  builtinsSeeded: string[]
 }
 
 export type QualityPref = '2160p' | '1080p' | '720p' | 'any'
@@ -178,6 +184,10 @@ export interface DownloadRecord {
   addedAt: number
   status: DownloadStatus
   error?: string
+  /** A copy of the poster on disk, so the download looks right offline. */
+  posterFile?: string
+  /** Filled in when listed: a URL for `posterFile` the app can load. Never stored. */
+  localPoster?: string
 }
 
 export interface DownloadProgress {
@@ -293,6 +303,20 @@ export interface ImportStatus {
   total: number
   done: number
   summary?: ImportSummary
+  error?: string
+}
+
+// --------------------------------------------------------- local library
+
+export interface LocalLibraryStatus {
+  scanning: boolean
+  /** When the last scan finished, 0 if never. */
+  scannedAt: number
+  files: number
+  movies: number
+  episodes: number
+  /** Files we could not match to a title; they still play, under their file name. */
+  unmatched: number
   error?: string
 }
 

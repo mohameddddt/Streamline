@@ -1,6 +1,6 @@
 import type { Settings } from './types'
 
-export const APP_VERSION = '0.3.0'
+export const APP_VERSION = '0.4.2'
 
 /** The desktop companion listens here, loopback only, when it is switched on. */
 export const COMPANION_PORT = 11480
@@ -48,7 +48,9 @@ export function portableDefaults(): Omit<Settings, 'downloadPath' | 'downloadsPa
     companionEnabled: false,
     companionToken: '',
     engineUrl: `http://127.0.0.1:${COMPANION_PORT}`,
-    engineToken: ''
+    engineToken: '',
+    localFolders: [],
+    builtinsSeeded: []
   }
 }
 
