@@ -51,9 +51,9 @@ npm run dist
 
 That writes two files into `release/`:
 
-- **Streamline-Setup-0.3.0.exe** — an installer. Run it once and you get a Start-menu and
+- **Streamline-Setup-0.4.2.exe** — an installer. Run it once and you get a Start-menu and
   desktop shortcut, and it updates cleanly.
-- **Streamline-Portable-0.3.0.exe** — a single self-contained file. Double-click it and the app
+- **Streamline-Portable-0.4.2.exe** — a single self-contained file. Double-click it and the app
   runs. Nothing is installed; keep it wherever you like.
 
 For development instead:
@@ -159,6 +159,28 @@ Four are installed by default:
 Add any other addon in Settings by pasting its `manifest.json` URL. If an addon has a configure
 page, configure it there first and paste the personalised URL it hands back — that URL carries
 your options in it.
+
+### Built-in sources
+
+Three more ship with the app. They answer in-process under a `streamline://` URL, sit in the same
+addon list, and can be reordered or removed like any other (Settings offers them again if you do):
+
+- **Internet Archive** (desktop and web) — a *Public domain films* catalog from archive.org's
+  curated film collections, with search, genre filters and paging. Items must carry a Creative
+  Commons / public-domain licence or predate 1978. Each film comes as direct links, which play
+  straight in the browser too, plus the Archive's own torrent so it can be downloaded to keep.
+  When a film on an ordinary IMDb title page is also on the Archive, those copies are offered
+  there as well, matched by title, year and runtime.
+- **Open movies** (desktop and web) — the Blender Foundation's Creative Commons films (Big Buck
+  Bunny, Sintel, Tears of Steel, Cosmos Laundromat, Elephants Dream) as web-seeded torrents.
+- **Local library** (desktop) — pick folders in Settings → Local library and your own files are
+  matched to Cinemeta by name (`Title (Year).mkv`, `Show S01E02.mp4`), get their artwork, and play
+  from their title page in the built-in player, listed first since they start instantly. Subtitle
+  files next to a video (`Film.en.srt`) are picked up. Files that cannot be matched still play,
+  listed under their file name. Folders are rescanned on launch and when you press *Rescan*.
+
+Torrents whose metadata is hosted over HTTP (the `xs` magnet parameter) — the Archive's and the
+open films' — start without waiting for peers, then download from their web seeds.
 
 ## Watching vs. downloading
 
