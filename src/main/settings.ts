@@ -11,6 +11,7 @@ import type {
   Stream
 } from '../shared/types'
 import { applyDebridConfig, portableDefaults } from '../shared/config'
+import { BUILTIN, seedBuiltins } from '../shared/builtins'
 import * as lib from '../shared/library'
 
 function defaults(): Settings {
@@ -48,11 +49,13 @@ let cache: Settings | null = null
 export function getSettings(): Settings {
   if (!cache) {
     cache = readJson<Settings>('settings.json', defaults())
+    let dirty = seedBuiltins(cache, [BUILTIN.archive, BUILTIN.openMovies, BUILTIN.local])
     // The companion token is a secret; mint one the first time it is needed.
     if (!cache.companionToken) {
       cache.companionToken = randomBytes(18).toString('base64url')
-      writeJson('settings.json', cache)
+      dirty = true
     }
+    if (dirty) writeJson('settings.json', cache)
   }
   return cache
 }
@@ -65,6 +68,18 @@ export function saveSettings(patch: Partial<Settings>): Settings {
   )
   writeJson('settings.json', cache)
   return cache
+}
+
+function isInside(root: string, target: string): boolean {
+  const rel = path.relative(path.resolve(root), target)
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
+/** Files the local server may hand out: downloads, their posters, and the library folders picked. */
+export function isLocalMediaPath(target: string): boolean {
+  const s = getSettings()
+  const posters = path.join(app.getPath('userData'), 'posters')
+  return [s.downloadsPath, posters, ...(s.localFolders ?? [])].some((root) => root && isInside(root, target))
 }
 
 export function regenerateCompanionToken(): Settings {
@@ -108,6 +123,8 @@ export const markWatched = (
   watched: boolean,
   seed?: Parameters<typeof lib.markWatched>[3]
 ): void => change((l) => lib.markWatched(l, key, watched, seed))
+export const markManyWatched = (changes: lib.WatchChange[]): void =>
+  change((l) => lib.markManyWatched(l, changes))
 export const clearProgress = (key: string): void => change((l) => lib.clearProgress(l, key))
 export const setRating = (
   entry: Parameters<typeof lib.setRating>[1],
