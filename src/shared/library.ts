@@ -100,6 +100,17 @@ export function setProgress(lib: LibraryFile, entry: ProgressEntry): void {
  * Flips an entry's watched flag. With no entry yet (an episode never opened),
  * `seed` describes the title so a finished one can be created.
  */
+export interface WatchChange {
+  key: string
+  watched: boolean
+  seed?: Omit<ProgressEntry, 'time' | 'duration' | 'updatedAt'>
+}
+
+/** A whole season or show at once, in one write. */
+export function markManyWatched(lib: LibraryFile, changes: WatchChange[]): void {
+  for (const c of changes) markWatched(lib, c.key, c.watched, c.seed)
+}
+
 export function markWatched(
   lib: LibraryFile,
   key: string,
