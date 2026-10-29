@@ -8,11 +8,13 @@ import type {
   Stream
 } from '../shared/types'
 import { getSettings } from './settings'
+import { isOffline } from './network'
 import {
   TRACKERS,
   ensureServer,
   findTorrent,
   getClient,
+  localFileUrl,
   magnetFor,
   pickFile,
   removeTorrent,
@@ -57,6 +59,59 @@ function persist(): void {
   }
 }
 
+/** Where download posters are kept: app data, so they do not clutter the downloads folder. */
+export function postersDir(): string {
+  return path.join(app.getPath('userData'), 'posters')
+}
+
+const posterJobs = new Set<string>()
+
+/**
+ * Each download keeps its .torrent. With it the torrent re-opens and checks the
+ * data already on disk with no network at all; from a bare magnet link it would
+ * first have to ask peers what the torrent even contains.
+ */
+const torrentFileFor = (infoHash: string): string =>
+  path.join(app.getPath('userData'), 'torrents', `${infoHash}.torrent`)
+
+function saveTorrentFile(torrent: any, infoHash: string): void {
+  try {
+    if (!torrent.torrentFile || fs.existsSync(torrentFileFor(infoHash))) return
+    fs.mkdirSync(path.dirname(torrentFileFor(infoHash)), { recursive: true })
+    fs.writeFileSync(torrentFileFor(infoHash), Buffer.from(torrent.torrentFile))
+  } catch (err) {
+    console.warn('[downloads] could not keep the .torrent', (err as Error).message)
+  }
+}
+
+function savedTorrentFile(infoHash: string): Buffer | null {
+  try {
+    return fs.readFileSync(torrentFileFor(infoHash))
+  } catch {
+    return null
+  }
+}
+
+/** Saves the poster next to the app's data so the download still has art offline. */
+async function cachePoster(infoHash: string): Promise<void> {
+  const record = all()[infoHash]
+  if (!record?.poster || !/^https?:/.test(record.poster) || posterJobs.has(infoHash)) return
+  if (record.posterFile && fs.existsSync(record.posterFile)) return
+  posterJobs.add(infoHash)
+  try {
+    const res = await fetch(record.poster, { signal: AbortSignal.timeout(15000) })
+    if (!res.ok) return
+    const file = path.join(postersDir(), `${infoHash}.img`)
+    fs.mkdirSync(postersDir(), { recursive: true })
+    fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()))
+    update(infoHash, { posterFile: file })
+  } catch {
+    /* offline or the image is gone; try again next time the list is shown */
+  } finally {
+    posterJobs.delete(infoHash)
+  }
+}
+
 function update(infoHash: string, patch: Partial<DownloadRecord>): void {
   const record = all()[infoHash]
   if (!record) return
@@ -79,6 +134,16 @@ function trackCompletion(torrent: any, infoHash: string, fileIdx: number): void 
   if (file.progress >= 1) finish()
   file.once('done', finish)
   torrent.once('done', finish)
+  // webtorrent 2 often fires neither event for one selected file in a multi-file
+  // torrent, which left finished downloads stuck on "downloading" — and so
+  // played over the network instead of off disk. Check the file itself too.
+  const timer = setInterval(() => {
+    if (settled || torrent.destroyed) return clearInterval(timer)
+    if (file.progress >= 1 || file.done) {
+      clearInterval(timer)
+      finish()
+    }
+  }, 2000)
   torrent.once('error', (err: Error) =>
     update(infoHash, { status: 'error', error: err.message })
   )
@@ -107,7 +172,10 @@ async function addTorrent(magnet: string, infoHash: string): Promise<any> {
       return existing
     }
   }
-  const torrent = engine.add(magnet, { path: settings.downloadsPath, announce: TRACKERS })
+  const torrent = engine.add(savedTorrentFile(infoHash) ?? magnet, {
+    path: settings.downloadsPath,
+    announce: TRACKERS
+  })
   setMode(infoHash, 'download')
   return torrent
 }
@@ -121,6 +189,7 @@ export async function start(stream: Stream, info: DownloadInfo): Promise<Downloa
   const magnet = magnetFor(stream)
   const torrent = await addTorrent(magnet, infoHash)
   await waitForMetadata(torrent)
+  saveTorrentFile(torrent, infoHash)
 
   const fileIdx = pickFile(torrent, stream.fileIdx, stream.behaviorHints?.filename)
   const file = torrent.files[fileIdx]
@@ -147,11 +216,24 @@ export async function start(stream: Stream, info: DownloadInfo): Promise<Downloa
   all()[infoHash] = record
   persist()
   trackCompletion(torrent, infoHash, fileIdx)
+  cachePoster(infoHash).catch(() => undefined)
   return record
 }
 
-export function list(): DownloadRecord[] {
-  return Object.values(all()).sort((a, b) => b.addedAt - a.addedAt)
+export async function list(): Promise<DownloadRecord[]> {
+  await ensureServer()
+  const out: DownloadRecord[] = []
+  for (const record of Object.values(all()).sort((a, b) => b.addedAt - a.addedAt)) {
+    const cached = record.posterFile && fs.existsSync(record.posterFile)
+    if (!cached) cachePoster(record.infoHash).catch(() => undefined)
+    out.push({ ...record, localPoster: cached ? await localFileUrl(record.posterFile as string) : undefined })
+  }
+  return out
+}
+
+/** Finished downloads, for the title pages: a downloaded film or episode is one more source. */
+export function finished(): DownloadRecord[] {
+  return Object.values(all()).filter((r) => r.status === 'done' && fs.existsSync(r.filePath))
 }
 
 export async function progress(): Promise<DownloadProgress[]> {
@@ -162,6 +244,11 @@ export async function progress(): Promise<DownloadProgress[]> {
     const torrent = findTorrent(record.infoHash)
     if (!torrent) continue
     const file = torrent.files?.[record.fileIdx]
+    // Catches downloads that finished before completion was tracked reliably.
+    if (file && file.progress >= 1) {
+      update(record.infoHash, { status: 'done', filePath: path.join(torrent.path, file.path) })
+      continue
+    }
     out.push({
       infoHash: record.infoHash,
       progress: file?.progress ?? torrent.progress ?? 0,
@@ -182,9 +269,13 @@ export async function pause(infoHash: string): Promise<void> {
 export async function resume(infoHash: string): Promise<void> {
   const record = all()[infoHash.toLowerCase()]
   if (!record || record.status === 'done') return
+  if (isOffline() && !savedTorrentFile(record.infoHash)) {
+    throw new Error('This download was started by an older version, so it needs a connection to carry on.')
+  }
   const torrent = await addTorrent(record.magnet, record.infoHash)
   update(record.infoHash, { status: 'downloading', error: undefined })
   await waitForMetadata(torrent)
+  saveTorrentFile(torrent, record.infoHash)
   selectOnly(torrent, record.fileIdx)
   trackCompletion(torrent, record.infoHash, record.fileIdx)
 }
@@ -216,20 +307,38 @@ export async function remove(infoHash: string, deleteFiles: boolean): Promise<vo
       console.warn('[downloads] delete failed', (err as Error).message)
     }
   }
+  if (record?.posterFile) fs.rmSync(record.posterFile, { force: true })
+  fs.rmSync(torrentFileFor(key), { force: true })
   delete all()[key]
   persist()
 }
 
-/** Local file once finished, live torrent while still downloading. */
+/**
+ * Off disk whenever the file is all there — finished, or found complete when the
+ * torrent re-checks it — so nothing about playing a download needs a connection.
+ * Only a download still coming in plays from the live torrent.
+ */
 export async function playSource(infoHash: string): Promise<PlaybackSource> {
   const record = all()[infoHash.toLowerCase()]
   if (!record) throw new Error('That download is no longer in your library.')
   await ensureServer()
-  if (record.status === 'done' && fs.existsSync(record.filePath)) {
-    return { kind: 'local', filePath: record.filePath }
+  const local: PlaybackSource = { kind: 'local', filePath: record.filePath }
+  const onDisk = fs.existsSync(record.filePath)
+  if (record.status === 'done' && onDisk) return local
+
+  // Offline with no .torrent to check against: the file is the best there is.
+  if (isOffline() && !savedTorrentFile(record.infoHash)) {
+    if (onDisk) return local
+    throw new Error('This download has not saved anything yet, so it needs a connection.')
   }
+
   await getClient()
   if (!findTorrent(record.infoHash)) await resume(record.infoHash)
+  const file = findTorrent(record.infoHash)?.files?.[record.fileIdx]
+  if (file && file.progress >= 1) {
+    update(record.infoHash, { status: 'done' })
+    return local
+  }
   return { kind: 'torrent', infoHash: record.infoHash, fileIdx: record.fileIdx }
 }
 
