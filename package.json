@@ -1,6 +1,6 @@
 {
   "name": "streamline",
-  "version": "0.3.0",
+  "version": "0.4.2",
   "description": "Movie & TV streamer for desktop and the web, powered by Stremio-compatible addons (Torrentio, TorrentsDB, ...)",
   "main": "./out/main/index.js",
   "author": "mohamedddt",
