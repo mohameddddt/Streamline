@@ -9,6 +9,7 @@ import * as trackers from './trackers'
 import * as updater from './updater'
 import * as importer from './importer'
 import * as companion from './companion'
+import * as local from './local'
 import fs from 'fs'
 import {
   getSettings,
@@ -18,6 +19,7 @@ import {
   setProgress,
   clearProgress,
   markWatched,
+  markManyWatched,
   getLastStream,
   setLastStream,
   setRating,
@@ -89,6 +91,7 @@ function registerIpc(): void {
     const next = saveSettings(patch)
     addons.forgetManifests()
     if ('companionEnabled' in patch) await companion.sync()
+    if ('localFolders' in patch) local.rescan().catch(() => undefined)
     return next
   })
   handle('settings:pickFolder', async () => {
@@ -104,6 +107,8 @@ function registerIpc(): void {
   })
 
   handle('addons:manifests', () => addons.getManifests())
+  handle('addons:unreachable', () => addons.unreachable())
+  handle('addons:wakeUp', () => addons.wakeUp())
   handle('addons:catalogs', () => addons.listCatalogs())
   handle('addons:probe', (url: string) => addons.getManifest(url))
   handle(
@@ -119,6 +124,9 @@ function registerIpc(): void {
   )
   handle('addons:subtitleVtt', (url: string) => addons.fetchSubtitleAsVtt(url))
 
+  handle('local:status', () => local.status())
+  handle('local:rescan', () => local.rescan())
+
   handle('torrent:warm', () => torrent.warmUp())
   handle('torrent:start', (stream: Stream) => torrent.startStream(stream))
   handle('torrent:stats', (infoHash: string) => torrent.getStats(infoHash))
@@ -132,6 +140,9 @@ function registerIpc(): void {
     'library:markWatched',
     (key: string, watched: boolean, seed?: Parameters<typeof markWatched>[2]) =>
       markWatched(key, watched, seed)
+  )
+  handle('library:markManyWatched', (changes: Parameters<typeof markManyWatched>[0]) =>
+    markManyWatched(changes)
   )
   handle('library:setRating', (entry: Parameters<typeof setRating>[0], rating: number | null) =>
     setRating(entry, rating)
@@ -190,6 +201,13 @@ function registerIpc(): void {
     downloads.remove(infoHash, deleteFiles)
   )
   handle('downloads:playSource', (infoHash: string) => downloads.playSource(infoHash))
+  handle('downloads:openFolder', async () => {
+    const dir = getSettings().downloadsPath
+    fs.mkdirSync(dir, { recursive: true })
+    const err = await shell.openPath(dir)
+    if (err) throw new Error(err)
+    return true
+  })
   handle('downloads:reveal', (infoHash: string) => {
     const filePath = downloads.filePathFor(infoHash)
     if (!filePath) throw new Error('That download is no longer in your library.')
@@ -272,6 +290,8 @@ if (!app.requestSingleInstanceLock()) {
     if (getSettings().autoUpdate) updater.checkOnStartup()
     downloads.resumeAll().catch((err) => console.warn('[downloads] resumeAll', err))
     companion.sync().catch((err) => console.warn('[companion]', err.message))
+    // Pick up files added while the app was closed.
+    if (getSettings().localFolders?.length) local.rescan().catch(() => undefined)
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })

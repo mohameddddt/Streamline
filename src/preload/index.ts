@@ -22,11 +22,13 @@ import type {
   TorrentHandle,
   TorrentStats,
   CompanionInfo,
+  LocalLibraryStatus,
   Platform,
   ProgressEntry as SeedEntry,
   RatingEntry as RatedEntry
 } from '../shared/types'
 import type { CatalogRef } from '../shared/addons'
+import type { WatchChange } from '../shared/library'
 
 export type { CatalogRef }
 
@@ -59,6 +61,10 @@ const api = {
   },
   addons: {
     manifests: () => invoke<AddonManifest[]>('addons:manifests'),
+    /** Installed addons being skipped for now because they did not answer. */
+    unreachable: () => invoke<string[]>('addons:unreachable'),
+    /** Back online: ask the addons that were not answering again. */
+    wakeUp: () => invoke<void>('addons:wakeUp'),
     catalogs: () => invoke<CatalogRef[]>('addons:catalogs'),
     probe: (url: string) => invoke<AddonManifest>('addons:probe', url),
     catalog: (addonUrl: string, type: string, id: string, extra?: Record<string, string>) =>
@@ -69,6 +75,10 @@ const api = {
     subtitles: (type: string, id: string, extra?: Record<string, string>) =>
       invoke<SubtitleTrack[]>('addons:subtitles', type, id, extra),
     subtitleVtt: (url: string) => invoke<string>('addons:subtitleVtt', url)
+  },
+  local: {
+    status: () => invoke<LocalLibraryStatus | null>('local:status'),
+    rescan: () => invoke<LocalLibraryStatus | null>('local:rescan')
   },
   torrent: {
     warm: () => invoke<void>('torrent:warm'),
@@ -89,6 +99,8 @@ const api = {
     clearProgress: (key: string) => invoke<void>('library:clearProgress', key),
     markWatched: (key: string, watched: boolean, seed?: WatchSeed) =>
       invoke<void>('library:markWatched', key, watched, seed),
+    /** Marks many episodes at once — a season or a whole show. */
+    markManyWatched: (changes: WatchChange[]) => invoke<void>('library:markManyWatched', changes),
     setRating: (entry: RatingTarget, rating: number | null) =>
       invoke<void>('library:setRating', entry, rating),
     /** Saves the whole library to a JSON file the user picks. Null if cancelled. */
@@ -117,7 +129,9 @@ const api = {
     remove: (infoHash: string, deleteFiles: boolean) =>
       invoke<void>('downloads:remove', infoHash, deleteFiles),
     playSource: (infoHash: string) => invoke<PlaybackSource>('downloads:playSource', infoHash),
-    reveal: (infoHash: string) => invoke<boolean>('downloads:reveal', infoHash)
+    reveal: (infoHash: string) => invoke<boolean>('downloads:reveal', infoHash),
+    /** Opens the downloads folder in File Explorer. */
+    openFolder: () => invoke<boolean>('downloads:openFolder')
   },
   playback: {
     plan: (source: PlaybackSource) => invoke<PlaybackPlan>('playback:plan', source)
