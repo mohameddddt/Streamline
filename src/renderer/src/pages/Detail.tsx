@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import type { MetaDetail, ProgressEntry, Video } from '../../../shared/types'
+import type { DownloadRecord, MetaDetail, ProgressEntry, Video } from '../../../shared/types'
 import { ErrorBox, Spinner, Stars, timeLeft } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { SourceSheet, type SheetTarget } from '../components/SourceSheet'
@@ -35,6 +35,40 @@ function findUpNext(meta: MetaDetail, progress: ProgressEntry[]): UpNext | null 
   return { video: list[0], resume: false }
 }
 
+/**
+ * A title page built from what is on this computer — its downloads and library
+ * entries — for when no addon can describe it (offline, before its details were
+ * ever saved). Enough to reach the downloaded film or episodes and play them.
+ */
+async function localMeta(type: string, id: string): Promise<MetaDetail | null> {
+  const [downloads, lib] = await Promise.all([
+    window.api.downloads.list().catch(() => [] as DownloadRecord[]),
+    window.api.library.get().catch(() => null)
+  ])
+  const mine = downloads.filter((d) => d.metaId === id && d.status === 'done')
+  const known = lib?.items.find((i) => i.id === id) ?? lib?.progress.find((p) => p.id === id)
+  if (!mine.length && !known) return null
+  // Episode downloads are titled "Show · S1E5 · Episode name".
+  const parts = (d: DownloadRecord): string[] => d.title.split(' · ')
+  const videos: Video[] = mine
+    .filter((d) => d.videoId && d.season !== undefined)
+    .map((d) => ({
+      id: d.videoId as string,
+      season: d.season,
+      episode: d.episode,
+      title: parts(d).slice(2).join(' · ') || undefined
+    }))
+  return {
+    id,
+    type,
+    name: known?.name ?? parts(mine[0])[0],
+    poster: mine[0]?.localPoster ?? known?.poster,
+    background: mine[0]?.localPoster,
+    description: 'Showing what is saved on this computer. Connect to the internet for the full details.',
+    videos: type === 'series' ? videos : undefined
+  }
+}
+
 export default function Detail(): JSX.Element {
   const { type = '', id = '' } = useParams()
   const navigate = useNavigate()
@@ -64,6 +98,8 @@ export default function Detail(): JSX.Element {
     setLogoFailed(false)
     window.api.addons
       .meta(type, id)
+      .catch(() => null)
+      .then((m) => m ?? localMeta(type, id))
       .then((m) => {
         if (!alive) return
         if (!m) throw new Error('No metadata addon could describe this title.')
@@ -143,6 +179,33 @@ export default function Detail(): JSX.Element {
     await loadLibrary()
   }
 
+  /** One write for a whole season or show, not one per episode. */
+  const setManyWatched = async (videos: Video[], watched: boolean, what: string): Promise<void> => {
+    if (!meta || !videos.length) return
+    await window.api.library.markManyWatched(
+      videos.map((v) => {
+        const key = progressKeyFor(meta.type, meta.id, v)
+        return {
+          key,
+          watched,
+          seed: {
+            key,
+            id: meta.id,
+            type: meta.type,
+            name: meta.name,
+            poster: meta.poster,
+            season: v.season,
+            episode: v.episode,
+            videoId: v.id,
+            year: meta.releaseInfo
+          }
+        }
+      })
+    )
+    await loadLibrary()
+    toast(watched ? `Marked ${what} as watched` : `Marked ${what} as not watched`, watched ? 'good' : 'info')
+  }
+
   if (error) {
     return (
       <div className="page">
@@ -156,6 +219,14 @@ export default function Detail(): JSX.Element {
   if (!meta) return <Spinner />
 
   const episodes = orderedEpisodes(meta.videos).filter((v) => v.season === season)
+  const isWatched = (v: Video): boolean => Boolean(progressOf(progressKeyFor(meta.type, meta.id, v))?.finished)
+  const hasAired = (v: Video): boolean => !v.released || new Date(v.released).getTime() <= Date.now()
+  // Unaired episodes cannot have been watched, and specials are extras, not the show.
+  const showEpisodes = orderedEpisodes(meta.videos).filter((v) => v.season !== 0 && hasAired(v))
+  const seasonEpisodes = episodes.filter(hasAired)
+  const showWatched = showEpisodes.length > 0 && showEpisodes.every(isWatched)
+  const seasonWatched = seasonEpisodes.length > 0 && seasonEpisodes.every(isWatched)
+  const seasonName = season === 0 ? 'the specials' : `season ${season}`
   const movieProgress = !isSeries ? progressOf(progressKeyFor(meta.type, meta.id)) : undefined
   const movieWatched = Boolean(movieProgress?.finished)
   const logo = !logoFailed ? logoFor(meta) : undefined
@@ -216,6 +287,15 @@ export default function Detail(): JSX.Element {
                 className={'round-btn lg' + (movieWatched ? ' on' : '')}
                 onClick={() => setWatched(undefined, !movieWatched)}
                 title={movieWatched ? 'Mark as not watched' : 'Mark as watched'}
+              >
+                <Icon name="check" size={19} />
+              </button>
+            )}
+            {isSeries && showEpisodes.length > 0 && (
+              <button
+                className={'round-btn lg' + (showWatched ? ' on' : '')}
+                onClick={() => setManyWatched(showEpisodes, !showWatched, 'the whole show')}
+                title={showWatched ? 'Mark the whole show as not watched' : 'Mark every aired episode as watched'}
               >
                 <Icon name="check" size={19} />
               </button>
@@ -283,12 +363,21 @@ export default function Detail(): JSX.Element {
                 </button>
               ))}
             </div>
+            {seasonEpisodes.length > 0 && (
+              <button
+                className={'btn glass season-check' + (seasonWatched ? ' on' : '')}
+                onClick={() => setManyWatched(seasonEpisodes, !seasonWatched, seasonName)}
+                title={seasonWatched ? `Mark ${seasonName} as not watched` : `Mark every aired episode of ${seasonName} as watched`}
+              >
+                <Icon name="check" size={15} /> {seasonWatched ? 'Season watched' : 'Mark season watched'}
+              </button>
+            )}
           </div>
 
           <div className="episode-list">
             {episodes.map((v) => {
               const p = progressOf(progressKeyFor(meta.type, meta.id, v))
-              const watched = Boolean(p?.finished)
+              const watched = isWatched(v)
               const pct = watched ? 1 : p?.duration ? p.time / p.duration : 0
               const isNext = upNext?.video.id === v.id
               const future = v.released && new Date(v.released).getTime() > Date.now()
