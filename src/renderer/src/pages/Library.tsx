@@ -9,9 +9,9 @@ import type {
 } from '../../../shared/types'
 import { Empty, ErrorBox, MetaCard, Segmented, Spinner, WideCard, humanBytes, humanTime, timeLeft } from '../components/ui'
 import { Icon } from '../components/Icon'
-import { detailPath, isWeb, toast } from '../lib/app'
+import { ask, detailPath, isWeb, toast } from '../lib/app'
 import { backdropFor } from '../lib/discover'
-import type { PlayerState } from '../lib/play'
+import { downloadPlayerState } from '../lib/play'
 
 type Tab = 'continue' | 'saved' | 'watched' | 'rated' | 'downloads' | 'insights'
 
@@ -47,35 +47,38 @@ function DownloadRow({
 
   const play = async (): Promise<void> => {
     try {
-      const source = await window.api.downloads.playSource(record.infoHash)
-      const plan = await window.api.playback.plan(source)
-      const state: PlayerState = {
-        plan,
-        source,
-        infoHash: done ? undefined : record.infoHash,
-        streamId: record.videoId ?? record.metaId,
-        title: record.title,
-        meta: { id: record.metaId, type: record.metaType, name: record.title, poster: record.poster },
-        season: record.season,
-        episode: record.episode,
-        videoId: record.videoId
-      }
-      navigate('/player', { state })
+      navigate('/player', { state: await downloadPlayerState(record) })
     } catch (err) {
       onError(err)
     }
   }
 
   const remove = async (): Promise<void> => {
-    const deleteFiles = window.confirm(
-      `Remove “${record.title}” from downloads.\n\nOK = also delete the file from disk.\nCancel = keep the file, just remove it from the list.`
-    )
-    await run(() => window.api.downloads.remove(record.infoHash, deleteFiles))
+    const choice = await ask({
+      title: `Remove “${record.title}”?`,
+      message:
+        record.status === 'done'
+          ? 'You can delete the video from your computer too, or keep the file and just take it off this list.'
+          : 'The download stops. You can also delete what has been saved so far.',
+      actions: [
+        { id: 'cancel', label: 'Cancel', tone: 'plain' },
+        { id: 'keep', label: 'Keep the file', tone: 'plain' },
+        { id: 'delete', label: 'Delete the file too', tone: 'danger' }
+      ]
+    })
+    if (choice !== 'keep' && choice !== 'delete') return
+    await run(() => window.api.downloads.remove(record.infoHash, choice === 'delete'))
   }
 
   return (
     <div className="dl-row">
-      <div className="dl-art">{record.poster ? <img src={record.poster} alt="" /> : <div className="fallback" />}</div>
+      <div className="dl-art">
+        {record.localPoster || record.poster ? (
+          <img src={record.localPoster ?? record.poster} alt="" />
+        ) : (
+          <div className="fallback" />
+        )}
+      </div>
       <div className="dl-body">
         <div className="dl-title">{record.title}</div>
         <div className="dl-file">{record.fileName}</div>
@@ -458,6 +461,14 @@ export default function Library(): JSX.Element {
           </Empty>
         ) : (
           <div className="dl-list">
+            <div className="dl-head">
+              <span>
+                Saved to your computer, so they play with no connection. They are also in File Explorer.
+              </span>
+              <button className="btn glass" onClick={() => window.api.downloads.openFolder().catch(setError)}>
+                <Icon name="folder" size={15} /> Open downloads folder
+              </button>
+            </div>
             {downloads.map((d) => (
               <DownloadRow key={d.infoHash} record={d} live={live[d.infoHash]} onChanged={load} onError={setError} />
             ))}
