@@ -99,7 +99,7 @@ export function parseStream(stream: Stream): StreamTraits {
   const seeders = seedMatch ? parseInt(seedMatch[1], 10) : -1
 
   const instant =
-    Boolean(stream.url) || /\[(rd|ad|pm|tb|dl|oc|ed|pt)\+\]|\bcached\b|⚡/i.test(stream.name ?? '')
+    Boolean(stream.url || stream.filePath) || /\[(rd|ad|pm|tb|dl|oc|ed|pt)\+\]|\bcached\b|⚡/i.test(stream.name ?? '')
 
   const cam = /\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine)\b/i.test(text)
 
