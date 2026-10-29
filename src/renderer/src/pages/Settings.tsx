@@ -5,6 +5,7 @@ import type {
   CompanionInfo,
   DebridProvider,
   DeviceAuth,
+  LocalLibraryStatus,
   QualityPref,
   Settings,
   TrackerName,
@@ -12,7 +13,8 @@ import type {
   UpdateState
 } from '../../../shared/types'
 import { ACCENTS, APP_VERSION } from '../../../shared/config'
-import { ErrorBox, Segmented, Spinner, Toggle } from '../components/ui'
+import { BUILTIN } from '../../../shared/builtins'
+import { ErrorBox, Segmented, Select, Spinner, Toggle } from '../components/ui'
 import { Icon, type IconName } from '../components/Icon'
 import { ImportSection } from '../components/ImportSection'
 import { applyAccent, isWeb, toast } from '../lib/app'
@@ -29,8 +31,11 @@ const DEBRID_OPTIONS: { value: DebridProvider; label: string }[] = [
   { value: 'putio', label: 'put.io' }
 ]
 
-const SUGGESTED = [
+const SUGGESTED: { name: string; role: string; url: string; desktopOnly?: boolean }[] = [
   { name: 'Cinemeta', role: 'catalogs & metadata', url: 'https://v3-cinemeta.strem.io/manifest.json' },
+  { name: 'Internet Archive', role: 'public-domain films', url: BUILTIN.archive },
+  { name: 'Open movies', role: 'Creative Commons films', url: BUILTIN.openMovies },
+  { name: 'Local library', role: 'your own files', url: BUILTIN.local, desktopOnly: true },
   { name: 'Torrentio', role: 'sources', url: 'https://torrentio.strem.fun/manifest.json' },
   { name: 'TorrentsDB', role: 'sources', url: 'https://torrentsdb.com/manifest.json' },
   { name: 'OpenSubtitles v3', role: 'subtitles', url: 'https://opensubtitles-v3.strem.io/manifest.json' }
@@ -188,6 +193,120 @@ function CompanionSection(): JSX.Element {
   )
 }
 
+// ------------------------------------------------------------ local library
+
+function scanSummary(s: LocalLibraryStatus): string {
+  if (s.scanning) return 'Scanning your folders and matching titles…'
+  if (!s.scannedAt) return 'Not scanned yet.'
+  if (!s.files) return 'No video files found in these folders yet.'
+  const parts = [`${s.movies} film file${s.movies === 1 ? '' : 's'}`, `${s.episodes} episode${s.episodes === 1 ? '' : 's'}`]
+  if (s.unmatched) parts.push(`${s.unmatched} listed by file name`)
+  return `${parts.join(' · ')} — last scanned ${new Date(s.scannedAt).toLocaleString()}.`
+}
+
+function LocalLibrarySection({
+  settings,
+  patch
+}: {
+  settings: Settings
+  patch: (change: Partial<Settings>, quiet?: boolean) => Promise<void>
+}): JSX.Element {
+  const [status, setStatus] = useState<LocalLibraryStatus | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const folders = settings.localFolders ?? []
+  const installed = settings.addons.includes(BUILTIN.local)
+
+  useEffect(() => {
+    window.api.local.status().then(setStatus).catch(setError)
+  }, [])
+
+  // A scan started elsewhere (on launch, or by adding a folder) reports in here.
+  useEffect(() => {
+    if (!status?.scanning) return
+    const timer = window.setInterval(() => {
+      window.api.local.status().then(setStatus).catch(() => undefined)
+    }, 1200)
+    return () => window.clearInterval(timer)
+  }, [status?.scanning])
+
+  const rescan = async (): Promise<void> => {
+    setError(null)
+    setStatus((s) => (s ? { ...s, scanning: true } : s))
+    try {
+      const next = await window.api.local.rescan()
+      setStatus(next)
+      if (next?.error) setError(new Error(next.error))
+      else if (next) toast(`Found ${next.files} video file${next.files === 1 ? '' : 's'}`, 'good')
+    } catch (err) {
+      setError(err)
+    }
+  }
+
+  const addFolder = async (): Promise<void> => {
+    const dir = await window.api.settings.pickFolder()
+    if (!dir || folders.includes(dir)) return
+    await patch({ localFolders: [...folders, dir] }, true)
+    await rescan()
+  }
+
+  return (
+    <>
+      <p className="hint">
+        Point Streamline at the folders where you keep films and shows. Files are matched to titles by name — something
+        like <span className="mono">Title (Year).mkv</span> or <span className="mono">Show S01E02.mp4</span> works best —
+        and then play from that title&rsquo;s page, listed first because they start instantly. Subtitle files with the
+        same name are picked up too.
+      </p>
+      {!installed && (
+        <div className="notice">
+          <Icon name="grid" size={16} />
+          <span>
+            The Local library addon is not installed, so these folders are not used.{' '}
+            <button className="btn ghost" onClick={() => patch({ addons: [...settings.addons, BUILTIN.local] }, true)}>
+              Install it again
+            </button>
+          </span>
+        </div>
+      )}
+      <div className="addon-list">
+        {folders.map((dir) => (
+          <div className="addon-item" key={dir}>
+            <div className="addon-logo">
+              <Icon name="folder" size={18} />
+            </div>
+            <div className="addon-text">
+              <div className="a-name">{dir.split(/[\\/]/).filter(Boolean).pop() ?? dir}</div>
+              <div className="a-desc">{dir}</div>
+            </div>
+            <div className="addon-tools">
+              <button
+                className="icon-btn"
+                onClick={() => patch({ localFolders: folders.filter((f) => f !== dir) }, true)}
+                aria-label="Remove folder"
+                title="Stop using this folder (nothing is deleted)"
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="btn-row">
+        <button className="btn primary" onClick={addFolder}>
+          <Icon name="plus" size={16} /> Add a folder
+        </button>
+        {folders.length > 0 && (
+          <button className="btn glass" disabled={status?.scanning} onClick={rescan}>
+            {status?.scanning ? <span className="spinner small" /> : <Icon name="shuffle" size={15} />} Rescan
+          </button>
+        )}
+      </div>
+      {status && folders.length > 0 && <p className="hint tight">{scanSummary(status)}</p>}
+      <ErrorBox error={error} />
+    </>
+  )
+}
+
 // --------------------------------------------------------------------- page
 
 export default function SettingsPage(): JSX.Element {
@@ -195,6 +314,7 @@ export default function SettingsPage(): JSX.Element {
   const { hash } = useLocation()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [manifests, setManifests] = useState<AddonManifest[]>([])
+  const [skipped, setSkipped] = useState<string[]>([])
   const [newAddon, setNewAddon] = useState('')
   const [error, setError] = useState<unknown>(null)
   const [linked, setLinked] = useState<TrackerStatus>({ trakt: false, simkl: false })
@@ -212,6 +332,7 @@ export default function SettingsPage(): JSX.Element {
   const refresh = useCallback(async () => {
     setSettings(await window.api.settings.get())
     setManifests(await window.api.addons.manifests())
+    setSkipped(await window.api.addons.unreachable())
   }, [])
 
   useEffect(() => {
@@ -262,6 +383,7 @@ export default function SettingsPage(): JSX.Element {
       setSettings(next)
       if (!quiet) toast('Saved', 'good')
       setManifests(await window.api.addons.manifests())
+      setSkipped(await window.api.addons.unreachable())
     } catch (err) {
       setError(err)
     }
@@ -313,10 +435,12 @@ export default function SettingsPage(): JSX.Element {
   if (!settings) return <Spinner />
 
   const manifestFor = (url: string): AddonManifest | undefined => manifests.find((m) => m.transportUrl === url)
+  const suggested = SUGGESTED.filter((s) => !settings.addons.includes(s.url) && !(web && s.desktopOnly))
 
   const nav: { id: string; label: string; icon: IconName; show: boolean }[] = [
     { id: 'appearance', label: 'Look & feel', icon: 'sparkle', show: true },
     { id: 'addons', label: 'Addons', icon: 'grid', show: true },
+    { id: 'local', label: 'Local library', icon: 'folder', show: !web },
     { id: 'companion', label: web ? 'Desktop engine' : 'Web companion', icon: 'link', show: true },
     { id: 'library-data', label: 'Library data', icon: 'library', show: true },
     { id: 'import', label: 'Import', icon: 'download', show: !web },
@@ -406,7 +530,8 @@ export default function SettingsPage(): JSX.Element {
             <p className="hint">
               Streamline speaks the Stremio addon protocol, so any addon manifest URL works — Torrentio, TorrentsDB,
               MediaFusion, Comet, Cinemeta, OpenSubtitles. If an addon has a configure page, configure it there first and
-              paste the personalised URL it gives you. Order matters: earlier addons win for metadata.
+              paste the personalised URL it gives you. Order matters: earlier addons win for metadata. The built-in
+              Internet Archive, Open movies{web ? '' : ' and Local library'} sources run inside the app and need no URL.
             </p>
             <div className="addon-list">
               {settings.addons.map((url, i) => {
@@ -418,10 +543,15 @@ export default function SettingsPage(): JSX.Element {
                     </div>
                     <div className="addon-text">
                       <div className="a-name">
-                        {m?.name ?? 'Not reachable'}
+                        {m?.name ?? (skipped.includes(url) ? 'Not responding' : 'Not reachable')}
                         {m?.version && <span className="a-ver">v{m.version}</span>}
+                        {skipped.includes(url) && <span className="tag-pill warn">Skipped for now</span>}
                       </div>
-                      <div className="a-desc">{m?.description ?? url}</div>
+                      <div className="a-desc">
+                        {skipped.includes(url)
+                          ? `Did not answer, so Streamline is leaving it out for a few minutes instead of waiting on it. ${url}`
+                          : (m?.description ?? url)}
+                      </div>
                     </div>
                     <div className="addon-tools">
                       <button className="icon-btn" disabled={i === 0} onClick={() => moveAddon(url, -1)} aria-label="Move up">
@@ -453,9 +583,9 @@ export default function SettingsPage(): JSX.Element {
                 <Icon name="plus" size={16} /> Install
               </button>
             </div>
-            {SUGGESTED.some((s) => !settings.addons.includes(s.url)) && (
+            {suggested.length > 0 && (
               <div className="chip-row" style={{ marginTop: 12 }}>
-                {SUGGESTED.filter((s) => !settings.addons.includes(s.url)).map((s) => (
+                {suggested.map((s) => (
                   <button key={s.url} className="filter-chip" onClick={() => addAddon(s.url)}>
                     <Icon name="plus" size={13} /> {s.name} <span className="chip-sub">{s.role}</span>
                   </button>
@@ -463,6 +593,12 @@ export default function SettingsPage(): JSX.Element {
               </div>
             )}
           </Section>
+
+          {!web && (
+            <Section id="local" icon="folder" title="Local library">
+              <LocalLibrarySection settings={settings} patch={patch} />
+            </Section>
+          )}
 
           <Section id="companion" icon="link" title={web ? 'Desktop engine' : 'Web companion'}>
             <CompanionSection />
@@ -662,13 +798,12 @@ export default function SettingsPage(): JSX.Element {
             </p>
             <div className="field">
               <label>Provider</label>
-              <select value={settings.debridProvider} onChange={(e) => patch({ debridProvider: e.target.value as DebridProvider })}>
-                {DEBRID_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                ariaLabel="Debrid provider"
+                value={settings.debridProvider}
+                onChange={(v) => patch({ debridProvider: v })}
+                options={DEBRID_OPTIONS}
+              />
             </div>
             {settings.debridProvider !== 'none' && (
               <div className="field">
