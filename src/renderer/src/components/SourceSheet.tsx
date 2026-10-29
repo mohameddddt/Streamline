@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { MetaDetail, QualityPref, Stream, Video } from '../../../shared/types'
 import { rankStreams, resolutionsIn, type RankedStream, type Resolution } from '../../../shared/streams'
-import { ErrorBox, Spinner, humanBytes } from './ui'
+import { ErrorBox, Select, Spinner, humanBytes } from './ui'
 import { Icon } from './Icon'
 import { isWeb, toast } from '../lib/app'
 import { preparePlayback, progressKeyFor } from '../lib/play'
@@ -14,7 +14,7 @@ export interface SheetTarget {
 
 type Sort = 'best' | 'seeders' | 'size' | 'quality'
 
-const idOf = (s: Stream): string => `${s.infoHash?.toLowerCase() ?? s.url}|${s.fileIdx ?? -1}`
+const idOf = (s: Stream): string => `${s.infoHash?.toLowerCase() ?? s.url ?? s.filePath}|${s.fileIdx ?? -1}`
 
 /** Same release, even if the addon regenerated the link since we saved it. */
 function sameStream(a: Stream, b: Stream): boolean {
@@ -25,6 +25,7 @@ function sameStream(a: Stream, b: Stream): boolean {
     )
   }
   if (a.url && b.url) return a.url === b.url
+  if (a.filePath && b.filePath) return a.filePath === b.filePath
   return false
 }
 
@@ -228,7 +229,13 @@ export function SourceSheet({
             <button
               className="icon-btn"
               disabled={!s.infoHash || downloading !== null || queued.has(id)}
-              title={s.infoHash ? 'Download to your computer' : 'This source is a direct link — stream it instead'}
+              title={
+                s.infoHash
+                  ? 'Download to your computer'
+                  : s.filePath
+                    ? 'Already on this computer'
+                    : 'This source is a direct link — stream it instead'
+              }
               onClick={() => download(s)}
             >
               <Icon name={queued.has(id) ? 'check' : 'download'} size={16} />
@@ -281,15 +288,21 @@ export function SourceSheet({
                 </button>
               )}
             </div>
-            <label className="sort-select">
+            <div className="sort-select">
               Sort
-              <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-                <option value="best">Best match</option>
-                <option value="seeders">Most seeds</option>
-                <option value="quality">Highest quality</option>
-                <option value="size">Largest file</option>
-              </select>
-            </label>
+              <Select
+                size="sm"
+                ariaLabel="Sort sources"
+                value={sort}
+                onChange={setSort}
+                options={[
+                  { value: 'best', label: 'Best match' },
+                  { value: 'seeders', label: 'Most seeds' },
+                  { value: 'quality', label: 'Highest quality' },
+                  { value: 'size', label: 'Largest file' }
+                ]}
+              />
+            </div>
           </div>
         )}
 
@@ -309,7 +322,8 @@ export function SourceSheet({
           {!streams && !error && <Spinner label="Asking your stream addons…" />}
           {streams && streams.length === 0 && !lastRanked && (
             <div className="sheet-empty">
-              No sources found. Add a stream addon (Torrentio, TorrentsDB…) in Settings, or try another episode.
+              No sources found. Add a stream addon in Settings, point the local library at your own files, or try
+              another episode.
             </div>
           )}
           {lastRanked && !filtered && row(lastRanked, 'last')}
