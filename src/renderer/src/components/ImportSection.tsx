@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { ImportService, ImportStatus, TrackerStatus } from '../../../shared/types'
-import { ErrorBox } from './ui'
+import { ErrorBox, Select } from './ui'
 import { Icon } from './Icon'
 
 const SERVICES: {
@@ -108,17 +108,13 @@ export function ImportSection({ linked }: { linked: TrackerStatus }): JSX.Elemen
 
       <div className="field">
         <label>Where from</label>
-        <select
+        <Select
+          ariaLabel="Import from"
           value={service}
           disabled={running}
-          onChange={(e) => setService(e.target.value as ImportService)}
-        >
-          {SERVICES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+          onChange={setService}
+          options={SERVICES.map((s) => ({ value: s.id, label: s.label }))}
+        />
       </div>
       <p className="hint">{chosen.help}</p>
 
