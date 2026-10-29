@@ -1,4 +1,5 @@
 import type {
+  DownloadRecord,
   MetaPreview,
   PlaybackPlan,
   PlaybackSource,
@@ -67,7 +68,9 @@ export async function preparePlayback(
   try {
     let source: PlaybackSource
     let infoHash: string | undefined
-    if (stream.url) {
+    if (stream.filePath) {
+      source = { kind: 'local', filePath: stream.filePath }
+    } else if (stream.url) {
       source = { kind: 'url', url: stream.url }
     } else {
       const handle = await window.api.torrent.start(stream)
@@ -95,6 +98,26 @@ export async function preparePlayback(
     }
   } finally {
     if (poll !== undefined) window.clearInterval(poll)
+  }
+}
+
+/**
+ * Player state for a download: straight off disk once it is finished — which
+ * needs no connection at all — or from the live torrent while it is still coming in.
+ */
+export async function downloadPlayerState(record: DownloadRecord): Promise<PlayerState> {
+  const source = await window.api.downloads.playSource(record.infoHash)
+  const plan = await window.api.playback.plan(source)
+  return {
+    plan,
+    source,
+    infoHash: source.kind === 'torrent' ? record.infoHash : undefined,
+    streamId: record.videoId ?? record.metaId,
+    title: record.title,
+    meta: { id: record.metaId, type: record.metaType, name: record.title, poster: record.poster },
+    season: record.season,
+    episode: record.episode,
+    videoId: record.videoId
   }
 }
 
