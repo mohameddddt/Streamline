@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { LibraryItem, MetaPreview, ProgressEntry } from '../../../shared/types'
+import type { DownloadRecord, LibraryItem, MetaPreview, ProgressEntry } from '../../../shared/types'
 import type { CatalogRef } from '../../../shared/addons'
-import { Empty, ErrorBox, MetaCard, Row, SkeletonCards, Spinner, WideCard, timeLeft } from '../components/ui'
+import { Empty, ErrorBox, MetaCard, Row, SkeletonCards, Spinner, WideCard, humanBytes, timeLeft } from '../components/ui'
 import { Icon } from '../components/Icon'
-import { detailPath, toast } from '../lib/app'
+import { detailPath, errorText, toast, useOnline } from '../lib/app'
+import { downloadPlayerState } from '../lib/play'
 import {
   backdropFor,
   browsableCatalogs,
@@ -182,8 +183,39 @@ function CatalogShelf({ cat, ranked }: { cat: CatalogRef; ranked?: boolean }): J
 
 // ------------------------------------------------------------------ page
 
+/** Finished downloads: they play from disk, so this row works offline too. */
+function DownloadedShelf({ items }: { items: DownloadRecord[] }): JSX.Element | null {
+  const navigate = useNavigate()
+  if (!items.length) return null
+  const play = async (record: DownloadRecord): Promise<void> => {
+    try {
+      navigate('/player', { state: await downloadPlayerState(record) })
+    } catch (err) {
+      toast(errorText(err), 'bad')
+    }
+  }
+  return (
+    <Row
+      title="Downloaded"
+      tag="plays offline"
+      action={<button className="link-btn" onClick={() => navigate('/library?tab=downloads')}>Open</button>}
+    >
+      {items.map((d) => (
+        <MetaCard
+          key={d.infoHash}
+          meta={{ id: d.metaId, type: d.metaType, name: d.title, poster: d.localPoster ?? d.poster }}
+          subtitle={humanBytes(d.length)}
+          onClick={() => play(d)}
+        />
+      ))}
+    </Row>
+  )
+}
+
 export default function Home(): JSX.Element {
   const navigate = useNavigate()
+  const online = useOnline()
+  const [downloaded, setDownloaded] = useState<DownloadRecord[]>([])
   const [catalogs, setCatalogs] = useState<CatalogRef[] | null>(null)
   const [spot, setSpot] = useState<MetaPreview[]>([])
   const [resume, setResume] = useState<ProgressEntry[]>([])
@@ -205,6 +237,10 @@ export default function Home(): JSX.Element {
       .then((list) => setCatalogs(list.filter((c) => !c.requiresGenre)))
       .catch(setError)
     loadLibrary()
+    window.api.downloads
+      .list()
+      .then((list) => setDownloaded(list.filter((d) => d.status === 'done')))
+      .catch(() => undefined)
   }, [])
 
   // The spotlight mixes the first film and first series catalogs.
@@ -234,10 +270,17 @@ export default function Home(): JSX.Element {
 
   const genres = useMemo(() => catalogs?.find((c) => c.type === 'movie' && c.genres.length)?.genres ?? [], [catalogs])
 
-  if (error) {
+  if (error || (!online && !catalogs)) {
     return (
-      <div className="page">
-        <ErrorBox error={error} />
+      <div className="page home-shelves">
+        {online ? (
+          <ErrorBox error={error} />
+        ) : (
+          <Empty icon="globe" title="You’re offline">
+            Catalogs need a connection, but everything you downloaded still plays.
+          </Empty>
+        )}
+        <DownloadedShelf items={downloaded} />
       </div>
     )
   }
@@ -282,6 +325,8 @@ export default function Home(): JSX.Element {
             ))}
           </Row>
         )}
+
+        <DownloadedShelf items={downloaded} />
 
         {first && <CatalogShelf cat={first} ranked />}
 
