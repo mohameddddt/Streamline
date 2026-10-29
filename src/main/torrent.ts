@@ -5,7 +5,7 @@ import { pathToFileURL } from 'url'
 import { app } from 'electron'
 import type { AddressInfo } from 'net'
 import type { Stream, TorrentHandle, TorrentStats } from '../shared/types'
-import { getSettings } from './settings'
+import { getSettings, isLocalMediaPath } from './settings'
 
 /**
  * webtorrent v2 is ESM-only while the Electron main bundle is CommonJS.
@@ -207,7 +207,7 @@ function serveTorrentFile(req: http.IncomingMessage, res: http.ServerResponse, u
   pipeTo(res, file.createReadStream({ start: range.start, end: range.end }))
 }
 
-/** Serves a finished download straight off disk — but only from the downloads folder. */
+/** Serves a file straight off disk — but only from the downloads folder or a library folder. */
 function serveLocalFile(req: http.IncomingMessage, res: http.ServerResponse, url: URL): void {
   const raw = url.searchParams.get('p')
   if (!raw) {
@@ -215,9 +215,7 @@ function serveLocalFile(req: http.IncomingMessage, res: http.ServerResponse, url
     return
   }
   const target = path.resolve(raw)
-  const root = path.resolve(getSettings().downloadsPath)
-  const relative = path.relative(root, target)
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+  if (!isLocalMediaPath(target)) {
     res.writeHead(403).end('forbidden')
     return
   }
@@ -281,10 +279,15 @@ export function pickFile(torrent: any, fileIdx?: number, hintName?: string): num
 export function magnetFor(stream: Stream): string {
   const hash = (stream.infoHash as string).toLowerCase()
   const trackers = new Set(TRACKERS)
+  // `xs:` names an HTTP copy of the .torrent and `ws:` a web seed, so a torrent
+  // with no peers yet (the Internet Archive's, the open films) still starts.
+  const extra: string[] = []
   for (const src of stream.sources ?? []) {
     if (src.startsWith('tracker:')) trackers.add(src.slice('tracker:'.length))
+    else if (src.startsWith('xs:')) extra.push(`&xs=${encodeURIComponent(src.slice(3))}`)
+    else if (src.startsWith('ws:')) extra.push(`&ws=${encodeURIComponent(src.slice(3))}`)
   }
-  const tr = [...trackers].map((t) => `&tr=${encodeURIComponent(t)}`).join('')
+  const tr = [...trackers].map((t) => `&tr=${encodeURIComponent(t)}`).join('') + extra.join('')
   const name = stream.behaviorHints?.filename
     ? `&dn=${encodeURIComponent(stream.behaviorHints.filename)}`
     : ''
