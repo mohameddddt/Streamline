@@ -1,6 +1,7 @@
 import type { StreamlineApi } from '../preload/index'
 import type {
   CompanionInfo,
+  MetaDetail,
   ImportStatus,
   LibraryBackup,
   PlaybackPlan,
@@ -12,7 +13,10 @@ import type {
   UpdateState
 } from '../shared/types'
 import { APP_VERSION, applyDebridConfig, portableDefaults } from '../shared/config'
-import { createAddonClient } from '../shared/addons'
+import { createAddonClient, createMetaStore } from '../shared/addons'
+import { BUILTIN, seedBuiltins } from '../shared/builtins'
+import { archiveAddon } from '../shared/archive'
+import { openMoviesAddon } from '../shared/openMovies'
 import * as lib from '../shared/library'
 
 /**
@@ -50,6 +54,9 @@ let settings: Settings = load<Settings>(SETTINGS_KEY, {
   downloadsPath: ''
 })
 
+// The local library reads this computer's disk, so it stays a desktop feature.
+if (seedBuiltins(settings, [BUILTIN.archive, BUILTIN.openMovies])) store(SETTINGS_KEY, settings)
+
 const library: lib.LibraryFile = load(LIBRARY_KEY, lib.emptyLibrary())
 
 function change<R>(fn: (l: lib.LibraryFile) => R): R {
@@ -58,7 +65,15 @@ function change<R>(fn: (l: lib.LibraryFile) => R): R {
   return result
 }
 
-const addons = createAddonClient({ addonUrls: () => settings.addons })
+const META_KEY = 'streamline:meta'
+
+const addons = createAddonClient({
+  addonUrls: () => settings.addons,
+  offline: () => !navigator.onLine,
+  // Smaller than the desktop's: localStorage holds a few megabytes at most.
+  metaStore: createMetaStore(load<Record<string, MetaDetail>>(META_KEY, {}), (all) => store(META_KEY, all), 80),
+  builtins: [archiveAddon, openMoviesAddon]
+})
 
 class DesktopOnly extends Error {
   constructor(what: string) {
@@ -200,6 +215,8 @@ export const webApi: StreamlineApi = {
   },
   addons: {
     manifests: () => addons.getManifests(),
+    unreachable: async () => addons.unreachable(),
+    wakeUp: async () => addons.wakeUp(),
     catalogs: () => addons.listCatalogs(),
     probe: (url) => addons.getManifest(url),
     catalog: (addonUrl, type, id, extra) => addons.getCatalog(addonUrl, type, id, extra),
@@ -221,6 +238,10 @@ export const webApi: StreamlineApi = {
         return res.text()
       }
     }
+  },
+  local: {
+    status: async () => null,
+    rescan: async () => null
   },
   torrent: {
     warm: async () => {
@@ -247,6 +268,7 @@ export const webApi: StreamlineApi = {
     clearProgress: async (key) => change((l) => lib.clearProgress(l, key)),
     markWatched: async (key, watched, seed) =>
       change((l) => lib.markWatched(l, key, watched, seed)),
+    markManyWatched: async (changes) => change((l) => lib.markManyWatched(l, changes)),
     setRating: async (entry, rating) => change((l) => lib.setRating(l, entry, rating)),
     backup: async () => {
       const backup = lib.makeBackup(library)
@@ -291,7 +313,8 @@ export const webApi: StreamlineApi = {
     playSource: async () => {
       throw new DesktopOnly('Playing downloads')
     },
-    reveal: async () => false
+    reveal: async () => false,
+    openFolder: async () => false
   },
   playback: {
     plan: async (source: PlaybackSource): Promise<PlaybackPlan> => {
