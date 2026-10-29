@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import http from 'http'
 import path from 'path'
 import type { PlaybackPlan, PlaybackSource, ProbeResult } from '../shared/types'
-import { getSettings } from './settings'
+import { isLocalMediaPath } from './settings'
 import { ensureServer, localFileUrl, streamUrlFor } from './torrent'
 
 /**
@@ -240,9 +240,7 @@ const active = new Set<ChildProcess>()
 function isAllowedSource(src: string): boolean {
   if (/^https?:\/\/127\.0\.0\.1:\d+\//.test(src)) return true
   if (/^https?:\/\//.test(src)) return true // a direct link an addon gave us
-  const root = path.resolve(getSettings().downloadsPath)
-  const rel = path.relative(root, path.resolve(src))
-  return !rel.startsWith('..') && !path.isAbsolute(rel)
+  return isLocalMediaPath(path.resolve(src))
 }
 
 export async function handleTranscode(
