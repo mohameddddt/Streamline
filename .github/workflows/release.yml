@@ -31,6 +31,9 @@ jobs:
       # Install scripts fetch the ffmpeg and ffprobe binaries that get bundled.
       - run: npm ci
 
+      # The Rust build checks the bundled resources exist, tests included.
+      - run: npm run ffmpeg
+
       - run: npm run test:rust
 
       - run: npm run build
