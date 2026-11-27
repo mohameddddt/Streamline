@@ -168,6 +168,8 @@ export interface ProgressEntry {
 export type DownloadStatus = 'downloading' | 'done' | 'paused' | 'error'
 
 export interface DownloadRecord {
+  /** `infoHash:fileIdx`: one torrent can hold several downloads (a season pack). */
+  id: string
   infoHash: string
   fileIdx: number
   magnet: string
@@ -191,6 +193,7 @@ export interface DownloadRecord {
 }
 
 export interface DownloadProgress {
+  id: string
   infoHash: string
   progress: number
   downloaded: number
@@ -241,6 +244,8 @@ export interface ProbeResult {
 export interface PlaybackPlan {
   mode: PlaybackMode
   url: string
+  /** The untouched file, for an external player that decodes everything itself. */
+  directUrl?: string
   duration: number
   reason: string
   videoCodec: string

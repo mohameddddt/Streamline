@@ -1,4 +1,4 @@
-import type { StreamlineApi } from '../preload/index'
+import { decodeCaps, type StreamlineApi } from '../shared/api'
 import type {
   CompanionInfo,
   MetaDetail,
@@ -20,7 +20,7 @@ import { openMoviesAddon } from '../shared/openMovies'
 import * as lib from '../shared/library'
 
 /**
- * `window.api` for the browser. Same shape as the desktop preload, so every
+ * `window.api` for the browser. Same shape as the desktop's, so every
  * page runs unchanged: addons are fetched straight from the tab, the library
  * and settings live in localStorage, and torrent playback is handed to the
  * desktop app's companion engine when one is paired. Things only a desktop
@@ -222,7 +222,7 @@ export const webApi: StreamlineApi = {
     catalog: (addonUrl, type, id, extra) => addons.getCatalog(addonUrl, type, id, extra),
     search: (query, type) => addons.search(query, type),
     meta: (type, id) => addons.getMeta(type, id),
-    streams: (type, id) => addons.getStreams(type, id),
+    streams: (type, id, onPartial) => addons.getStreams(type, id, onPartial),
     subtitles: (type, id, extra) => addons.getSubtitles(type, id, extra),
     // Many subtitle hosts send no CORS headers; the companion can fetch for us.
     subtitleVtt: async (url) => {
@@ -322,7 +322,7 @@ export const webApi: StreamlineApi = {
       // convert what the browser cannot decode.
       if (settings.engineToken && source.kind !== 'local') {
         try {
-          return await engine<PlaybackPlan>('/api/playback/plan', { source })
+          return await engine<PlaybackPlan>('/api/playback/plan', { source, caps: decodeCaps() })
         } catch (err) {
           if (source.kind === 'torrent') throw err
         }

@@ -1,4 +1,4 @@
-import type { StreamlineApi } from '../../preload/index'
+import type { StreamlineApi } from '../../shared/api'
 
 declare global {
   interface Window {
