@@ -1,0 +1,72 @@
+[package]
+name = "streamline"
+version = "0.5.0"
+description = "Movie & TV streamer powered by Stremio-compatible addons"
+authors = ["mohamedddt"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "streamline_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+# `rust-tls` brings the AWS-LC SHA-1: the default (crypto-hash) opens a Windows
+# crypto context per piece, ~14 ms each, which made checking a large torrent
+# take minutes before it could start.
+librqbit = { version = "8", default-features = false, features = ["rust-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "stream", "gzip"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures = "0.3"
+axum = "0.8"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+parking_lot = "0.12"
+regex = "1"
+unicode-normalization = "0.1"
+encoding_rs = "0.8"
+chardetng = "0.1"
+flate2 = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+rand = "0.8"
+base64 = "0.22"
+dirs = "5"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+sha2 = "0.10"
+hex = "0.4"
+url = "2"
+percent-encoding = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Power",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+  "Win32_Security",
+] }
+
+# Dependencies are built optimised even in development: an unoptimised SHA-1
+# makes librqbit's piece checks crawl, and that hides real performance.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "unwind"
+strip = true
