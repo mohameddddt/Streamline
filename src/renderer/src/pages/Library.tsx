@@ -67,7 +67,7 @@ function DownloadRow({
       ]
     })
     if (choice !== 'keep' && choice !== 'delete') return
-    await run(() => window.api.downloads.remove(record.infoHash, choice === 'delete'))
+    await run(() => window.api.downloads.remove(record.id, choice === 'delete'))
   }
 
   return (
@@ -110,15 +110,15 @@ function DownloadRow({
         </button>
         {!done &&
           (record.status === 'downloading' ? (
-            <button className="btn glass" disabled={busy} onClick={() => run(() => window.api.downloads.pause(record.infoHash))}>
+            <button className="btn glass" disabled={busy} onClick={() => run(() => window.api.downloads.pause(record.id))}>
               <Icon name="pause" size={14} /> Pause
             </button>
           ) : (
-            <button className="btn glass" disabled={busy} onClick={() => run(() => window.api.downloads.resume(record.infoHash))}>
+            <button className="btn glass" disabled={busy} onClick={() => run(() => window.api.downloads.resume(record.id))}>
               Resume
             </button>
           ))}
-        <button className="round-btn" title="Show file" disabled={busy} onClick={() => window.api.downloads.reveal(record.infoHash).catch(onError)}>
+        <button className="round-btn" title="Show file" disabled={busy} onClick={() => window.api.downloads.reveal(record.id).catch(onError)}>
           <Icon name="folder" size={17} />
         </button>
         <button className="round-btn" title="Remove" disabled={busy} onClick={remove}>
@@ -312,7 +312,7 @@ export default function Library(): JSX.Element {
     const tick = (): void => {
       window.api.downloads
         .progress()
-        .then((list) => setLive(Object.fromEntries(list.map((p) => [p.infoHash, p]))))
+        .then((list) => setLive(Object.fromEntries(list.map((p) => [p.id, p]))))
         .catch(() => undefined)
     }
     tick()
@@ -470,7 +470,7 @@ export default function Library(): JSX.Element {
               </button>
             </div>
             {downloads.map((d) => (
-              <DownloadRow key={d.infoHash} record={d} live={live[d.infoHash]} onChanged={load} onError={setError} />
+              <DownloadRow key={d.id} record={d} live={live[d.id]} onChanged={load} onError={setError} />
             ))}
           </div>
         ))}

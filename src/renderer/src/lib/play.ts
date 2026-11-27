@@ -106,7 +106,7 @@ export async function preparePlayback(
  * needs no connection at all — or from the live torrent while it is still coming in.
  */
 export async function downloadPlayerState(record: DownloadRecord): Promise<PlayerState> {
-  const source = await window.api.downloads.playSource(record.infoHash)
+  const source = await window.api.downloads.playSource(record.id)
   const plan = await window.api.playback.plan(source)
   return {
     plan,

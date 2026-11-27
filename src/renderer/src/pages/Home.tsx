@@ -202,7 +202,7 @@ function DownloadedShelf({ items }: { items: DownloadRecord[] }): JSX.Element | 
     >
       {items.map((d) => (
         <MetaCard
-          key={d.infoHash}
+          key={d.id}
           meta={{ id: d.metaId, type: d.metaType, name: d.title, poster: d.localPoster ?? d.poster }}
           subtitle={humanBytes(d.length)}
           onClick={() => play(d)}
