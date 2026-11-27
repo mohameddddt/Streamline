@@ -150,6 +150,17 @@ export default function Player(): JSX.Element {
     }
   }, [])
 
+  // Leaving the player lets its torrent rest, so a stream nobody is watching
+  // stops taking bandwidth. The engine waits a moment before pausing it, so
+  // the next episode from the same season pack is not interrupted.
+  useEffect(() => {
+    const hash = state?.source.kind === 'torrent' ? state.source.infoHash : undefined
+    if (!hash) return
+    return () => {
+      window.api.torrent.remove(hash).catch(() => undefined)
+    }
+  }, [state])
+
   // ------------------------------------------------------- the next episode
   useEffect(() => {
     if (!state?.videoId || state.meta.type !== 'series') return
@@ -388,7 +399,9 @@ export default function Player(): JSX.Element {
     }
     const onKey = (e: KeyboardEvent): void => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
-      switch (e.key) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      // Letters work with Caps Lock or Shift held too.
+      switch (e.key.length === 1 ? e.key.toLowerCase() : e.key) {
         case 'Escape':
           if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
           else if (panel) setPanel(null)
@@ -466,6 +479,10 @@ export default function Player(): JSX.Element {
   }, [volume, muted, speed, src])
 
   if (!state || !plan) return <div />
+
+  // An external player decodes everything itself, so it gets the original
+  // file, never the converted pipe (which it could not seek in either).
+  const externalUrl = plan.directUrl ?? plan.url
 
   const ratioAt = (e: React.PointerEvent<HTMLDivElement>): number => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -616,7 +633,7 @@ export default function Player(): JSX.Element {
 
           <div className="spacer" />
 
-          {stats && (
+          {stats && stats.fileProgress < 1 && (
             <span className="stat-line">
               <span>{stats.peers} peers</span>
               <span>{humanBytes(stats.downloadSpeed)}/s</span>
@@ -700,7 +717,7 @@ export default function Player(): JSX.Element {
             <button
               className="ctrl"
               title="Open in your external player"
-              onClick={() => window.api.app.externalPlayer(plan.url, state.title).catch((err) => setError(err))}
+              onClick={() => window.api.app.externalPlayer(externalUrl, state.title).catch((err) => setError(err))}
             >
               <Icon name="external" size={20} />
             </button>
@@ -792,7 +809,7 @@ export default function Player(): JSX.Element {
               {!isWeb() && (
                 <button
                   className="btn"
-                  onClick={() => window.api.app.externalPlayer(plan.url, state.title).catch((e) => setError(e))}
+                  onClick={() => window.api.app.externalPlayer(externalUrl, state.title).catch((e) => setError(e))}
                 >
                   Open in external player
                 </button>
