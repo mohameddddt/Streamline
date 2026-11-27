@@ -2,19 +2,40 @@ import type { MetaPreview } from '../../../shared/types'
 import type { CatalogRef } from '../../../shared/addons'
 
 let catalogsPromise: Promise<CatalogRef[]> | null = null
+/** When the cached list stops being trusted. */
+let catalogsUntil = 0
 
-/** The installed catalogs that can be browsed without a search term. */
+/**
+ * The installed catalogs that can be browsed without a search term.
+ *
+ * The list only holds the addons that answered in time, so it is not kept for
+ * good: a cold start where Cinemeta was slow, or one made offline, used to
+ * leave Home without those shelves until the app restarted. An empty list is
+ * never kept, and one made while an addon was not answering is asked again soon.
+ */
 export function browsableCatalogs(fresh = false): Promise<CatalogRef[]> {
-  if (fresh || !catalogsPromise) {
-    catalogsPromise = window.api.addons
+  if (fresh || !catalogsPromise || Date.now() > catalogsUntil) {
+    catalogsUntil = Date.now() + 10 * 60 * 1000
+    const job = window.api.addons
       .catalogs()
-      .then((list) => list.filter((c) => !c.requiresSearch && !c.requiresOther))
+      .then(async (list) => {
+        const missing = await window.api.addons.unreachable().catch(() => [] as string[])
+        if (!list.length) catalogsUntil = 0
+        else if (missing.length) catalogsUntil = Date.now() + 20 * 1000
+        return list.filter((c) => !c.requiresSearch && !c.requiresOther)
+      })
       .catch((err) => {
-        catalogsPromise = null
+        if (catalogsPromise === job) catalogsPromise = null
         throw err
       })
+    catalogsPromise = job
   }
   return catalogsPromise
+}
+
+/** Back online: the next page asks every addon again. */
+export function forgetCatalogs(): void {
+  catalogsUntil = 0
 }
 
 /** A random, well-rated title from a random catalog. */

@@ -12,6 +12,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { Dialogs, Toasts } from './components/ui'
 import { applyAccent, isWeb, useOnline } from './lib/app'
 import { Icon } from './components/Icon'
+import { forgetCatalogs } from './lib/discover'
 
 /** Remounts the player for every navigation, so "next episode" starts clean. */
 function PlayerRoute(): JSX.Element {
@@ -25,7 +26,10 @@ function OfflineBanner(): JSX.Element | null {
   const was = useRef(online)
   useEffect(() => {
     // Back online: the addons benched while it was down get asked again.
-    if (online && !was.current) window.api.addons.wakeUp().catch(() => undefined)
+    if (online && !was.current) {
+      window.api.addons.wakeUp().catch(() => undefined)
+      forgetCatalogs()
+    }
     was.current = online
   }, [online])
   if (online) return null
