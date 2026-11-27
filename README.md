@@ -1,13 +1,14 @@
 # Streamline
 
-A movie & TV streamer for Windows/macOS/Linux **and the web**, built on Electron + React +
-TypeScript. The desktop app and the web version share one interface and one codebase.
+A movie & TV streamer for Windows **and the web**. The desktop app is a Rust backend
+(Tauri, librqbit, axum) under a React + TypeScript interface; the web version runs the same
+interface in a browser tab.
 It speaks the **Stremio addon protocol**, so it works with Torrentio, TorrentsDB, MediaFusion,
 Comet, Cinemeta, OpenSubtitles and anything else that publishes a `manifest.json`.
 
-You can either **stream** a title — WebTorrent fetches pieces in order and serves them over a
-loopback-only HTTP server, so playback starts long before the file is complete — or **download**
-it to keep. Downloads run in the background, survive restarts, and are watchable while still in
+You can either **stream** a title — the torrent engine fetches the pieces under the player first
+and serves them over a loopback-only HTTP server, so playback starts long before the file is
+complete — or **download** it to keep. Downloads run in the background, survive restarts, and are watchable while still in
 progress.
 
 Everything it uses is free. No account, no API key, nothing to pay for.
@@ -44,26 +45,36 @@ Foundation, CC BY 3.0); posters and artwork come from Cinemeta.
 
 ## Getting an .exe
 
-```bash
-npm install
-npm run dist
-```
-
-That writes two files into `release/`:
-
-- **Streamline-Setup-0.4.2.exe** — an installer. Run it once and you get a Start-menu and
-  desktop shortcut, and it updates cleanly.
-- **Streamline-Portable-0.4.2.exe** — a single self-contained file. Double-click it and the app
-  runs. Nothing is installed; keep it wherever you like.
-
-For development instead:
+You need [Node.js](https://nodejs.org) and [Rust](https://rustup.rs), plus a C toolchain for
+Rust: either the Visual Studio Build Tools (the default `x86_64-pc-windows-msvc` toolchain), or
+the GNU toolchain with a MinGW-w64 such as [WinLibs](https://winlibs.com) on `PATH`
+(`winget install BrechtSanders.WinLibs.POSIX.MSVCRT`).
 
 ```bash
-npm run dev       # hot-reloading
-npm run build     # bundles into out/
-npm start         # run the production bundles
-npm run icon      # regenerate resources/icon.ico
+npm install      # also fetches the ffmpeg + ffprobe binaries that get bundled
+npm run build
 ```
+
+That writes **`src-tauri/target/release/bundle/nsis/Streamline_0.5.0_x64-setup.exe`**, an
+installer that adds Start-menu and desktop shortcuts and updates in place. It installs per user
+(no admin prompt) and brings the WebView2 runtime along if Windows lacks it. The bare
+`src-tauri/target/release/streamline.exe` also runs on its own, next to a `ffmpeg` folder holding
+`ffmpeg.exe` and `ffprobe.exe`.
+
+Pushing a `v*` tag builds the installer on GitHub Actions and attaches it to the release
+([.github/workflows/release.yml](.github/workflows/release.yml)).
+
+For development:
+
+```bash
+npm run dev         # the app with a hot-reloading interface; Rust rebuilds on change
+npm run typecheck   # TypeScript, both builds
+npm run test:rust   # the backend's unit tests
+npm run icon        # regenerate resources/icon.ico
+```
+
+Coming from 0.4 (the Electron build)? Uninstall it first; the new installer is a different
+package. Settings, library and downloads carry over: both read `%APPDATA%\streamline`.
 
 ## The web version
 
@@ -126,26 +137,31 @@ version says so where they would appear.
 
 | Path | Role |
 | --- | --- |
-| [src/main/index.ts](src/main/index.ts) | Electron main process, window, all IPC handlers |
-| [src/main/addons.ts](src/main/addons.ts) | Desktop wiring for the shared addon client |
-| [src/main/companion.ts](src/main/companion.ts) | Loopback API that lets the web version use this engine |
-| [src/main/torrent.ts](src/main/torrent.ts) | WebTorrent engine + range-capable local stream server |
-| [src/main/downloads.ts](src/main/downloads.ts) | Download manager: queue, pause/resume, disk storage |
-| [src/main/playback.ts](src/main/playback.ts) | Codec probing + on-the-fly remux/transcode via ffmpeg |
-| [src/main/trackers.ts](src/main/trackers.ts) | Trakt + Simkl scrobbling, Letterboxd CSV export |
-| [src/main/updater.ts](src/main/updater.ts) | Self-update from GitHub Releases |
-| [src/main/settings.ts](src/main/settings.ts) | Settings, library and watch-progress storage on disk |
-| [src/preload/index.ts](src/preload/index.ts) | Typed `window.api` bridge (contextIsolation on) |
+| [src-tauri/src/lib.rs](src-tauri/src/lib.rs) | Window, lifecycle and every command the interface calls |
+| [src-tauri/src/torrent.rs](src-tauri/src/torrent.rs) | librqbit torrent engine; web-seed fallback for torrents with no swarm |
+| [src-tauri/src/server.rs](src-tauri/src/server.rs) | Loopback media server: torrent files, files on disk, ffmpeg output |
+| [src-tauri/src/playback.rs](src-tauri/src/playback.rs) | Codec probing + on-the-fly remux/transcode via ffmpeg |
+| [src-tauri/src/downloads.rs](src-tauri/src/downloads.rs) | Download manager: per-file downloads, pause/resume, survives restarts |
+| [src-tauri/src/local.rs](src-tauri/src/local.rs) | Local library: folder scan, name parsing, Cinemeta matching |
+| [src-tauri/src/library.rs](src-tauri/src/library.rs) | Library storage (same rules as src/shared/library.ts) |
+| [src-tauri/src/importer.rs](src-tauri/src/importer.rs) | Letterboxd / IMDb / CSV / Trakt / Simkl history import |
+| [src-tauri/src/trackers.rs](src-tauri/src/trackers.rs) | Trakt + Simkl sign-in and scrobbling, CSV exports |
+| [src-tauri/src/companion.rs](src-tauri/src/companion.rs) | Loopback API that lets the web version use this engine |
+| [src-tauri/src/subtitles.rs](src-tauri/src/subtitles.rs) | Subtitle fetching: encoding detection, SubRip → WebVTT |
+| [src-tauri/src/updater.rs](src-tauri/src/updater.rs) | Self-update from GitHub Releases, checksum-verified |
+| [src/desktop/api.ts](src/desktop/api.ts) | `window.api` over Tauri commands |
+| [src/web/api.ts](src/web/api.ts) | `window.api` in a browser tab |
+| [src/shared/api.ts](src/shared/api.ts) | The `StreamlineApi` type both implement |
 | [src/renderer/src/pages/](src/renderer/src/pages/) | Home, Browse, Search, Detail, Player, Library, Settings |
 | [src/shared/addons.ts](src/shared/addons.ts) | Stremio addon client, used by both builds |
-| [src/shared/library.ts](src/shared/library.ts) | Library rules (progress, ratings, imports, backups), used by both builds |
+| [src/shared/library.ts](src/shared/library.ts) | Library rules for the web build |
 | [src/shared/streams.ts](src/shared/streams.ts) | Parses and ranks sources for filters and "Play best" |
-| [src/shared/types.ts](src/shared/types.ts) | Types shared across every process and both builds |
-| [src/web/](src/web/) | Web entry point and the browser `window.api` |
 
-The renderer never touches Node or the network directly — everything goes through `window.api`,
-which is IPC on the desktop and [src/web/api.ts](src/web/api.ts) in the browser. Both
-implement the same TypeScript type, so the compiler keeps them in step.
+The interface never touches the disk or a torrent directly — everything goes through
+`window.api`, which is Tauri commands on the desktop and [src/web/api.ts](src/web/api.ts) in the
+browser. Both implement [`StreamlineApi`](src/shared/api.ts), so the compiler keeps them in step.
+The Stremio addon client runs in the interface in both builds, so catalogs and sources behave the
+same everywhere.
 
 ## Addons
 
@@ -180,20 +196,24 @@ addon list, and can be reordered or removed like any other (Settings offers them
   listed under their file name. Folders are rescanned on launch and when you press *Rescan*.
 
 Torrents whose metadata is hosted over HTTP (the `xs` magnet parameter) — the Archive's and the
-open films' — start without waiting for peers, then download from their web seeds.
+open films' — start without waiting for peers. They stream from the swarm when it has anyone in
+it, and from their HTTP web seeds when it does not; a download that finds no peers switches to
+the web seed on its own.
 
 ## Watching vs. downloading
 
 Every source in the list has two actions:
 
-- **Click the row** to stream it now. Pieces are fetched in order into a temporary cache that is
-  wiped when the app closes.
+- **Click the row** to stream it now. Pieces are fetched into a temporary cache that is wiped
+  when the app closes. Only the stream you are watching uses bandwidth: leaving the player, or
+  starting another, pauses the one before.
 - **The download button** (desktop) downloads it properly. The file goes to your Downloads folder (configurable), is
   never auto-deleted, and keeps going in the background while you browse. It survives restarts —
   unfinished downloads resume automatically.
 
 A download is playable before it finishes: hitting Play on a partial download streams from the
-same torrent, and once complete it plays straight off disk.
+same torrent, and once complete it plays straight off disk. Several episodes of one season pack
+can download side by side, each its own entry.
 
 ## Library
 
@@ -242,11 +262,11 @@ the Letterboxd file carries an `imdbID` column, which their importer matches on 
 Your settings, library and downloads live outside the install folder (`%APPDATA%\Streamline` and
 your downloads folder), so they always survive an update.
 
-Running a newer `Streamline-Setup-*.exe` upgrades in place. For automatic updates, set your repo
-under `build.publish` in [package.json](package.json), replacing `YOUR_GITHUB_USERNAME`, and
-publish releases with `npx electron-builder --win --publish always`. The app then checks on
-startup, downloads in the background, and installs on quit. Until that is set, the Updates panel
-in Settings reports that no update server is configured.
+Running a newer `Streamline_*-setup.exe` upgrades in place. The app also updates itself: it
+checks the latest GitHub release of `mohameddddt/Streamline` on startup (`REPO` in
+[src-tauri/src/updater.rs](src-tauri/src/updater.rs)), downloads its installer in the
+background, verifies it against the SHA-256 digest GitHub publishes, and installs it when you
+restart from Settings or quit.
 
 ## Debrid (optional, paid — off by default)
 
@@ -256,18 +276,23 @@ Torrentio-style addon URL so results come back as direct HTTPS links.
 
 ## Codecs — everything plays in-app
 
-Chromium alone only decodes H.264/AAC, which leaves out the HEVC, AC3 and DTS releases that make
-up a lot of good torrents. Streamline bundles its own ffmpeg and puts it in front of the player:
+The window's decoder handles H.264, VP9 and AV1 with AAC, Opus or MP3, which leaves out the HEVC,
+AC3 and DTS releases that make up a lot of good torrents. Streamline bundles its own ffmpeg and
+puts it in front of the player:
 
 1. **ffprobe** inspects the file first.
-2. If Chromium can already handle it, it plays **direct** — no ffmpeg, native seeking.
+2. If the window can already handle it, it plays **direct** — no ffmpeg, native seeking. That
+   includes HEVC on machines whose Windows has a HEVC decoder; the app asks before deciding.
 3. If only the audio is unsupported (the common AC3 case), it **remuxes**: the video is copied
    untouched and only the audio becomes AAC. Near-zero CPU, starts immediately.
-4. If the video itself is unsupported (HEVC), it **transcodes**, preferring a hardware encoder
-   (NVENC / QuickSync / AMF) and falling back to x264.
+4. If the video itself is unsupported (HEVC without a decoder, MPEG-4 Part 2), it
+   **transcodes**, preferring a hardware encoder (NVENC / QuickSync / AMF) and falling back to
+   x264, which is capped at 1080p so it keeps up in real time.
 
-Each encoder is verified by actually encoding a frame at startup, because `ffmpeg -encoders`
-lists what was compiled in rather than what your GPU can run.
+Each encoder is verified by actually encoding a frame — in the background at startup, so the
+first conversion does not wait — because `ffmpeg -encoders` lists what was compiled in rather
+than what your GPU can run. ffmpeg runs inside a Windows job object, so it never outlives the
+app, even after a crash.
 
 Remuxed and transcoded output is a live pipe, so it cannot be seeked natively. The player handles
 that itself: seeking restarts ffmpeg at the new timestamp and offsets the clock. Because a copied
