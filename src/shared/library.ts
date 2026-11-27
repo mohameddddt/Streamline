@@ -31,8 +31,8 @@ export function listLibrary(lib: LibraryFile): {
 
 /**
  * Merges imported history. Anything the user already has wins over the import:
- * an existing finished entry is left alone, and an unfinished one keeps its
- * resume position while being marked watched.
+ * an existing finished entry is left alone, an unfinished one keeps its resume
+ * position while being marked watched, and an existing rating stays as it is.
  */
 export function mergeImport(
   lib: LibraryFile,
@@ -46,7 +46,9 @@ export function mergeImport(
     if (!existing) lib.progress[entry.key] = entry
     else if (!existing.finished) existing.finished = true
   }
-  for (const rating of batch.ratings) lib.ratings[rating.key] = rating
+  for (const rating of batch.ratings) {
+    if (!lib.ratings[rating.key]) lib.ratings[rating.key] = rating
+  }
 }
 
 /** Restoring a backup: whichever side touched an entry last keeps it. */
