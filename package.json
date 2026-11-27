@@ -1,93 +1,41 @@
 {
   "name": "streamline",
-  "version": "0.4.2",
-  "description": "Movie & TV streamer for desktop and the web, powered by Stremio-compatible addons (Torrentio, TorrentsDB, ...)",
-  "main": "./out/main/index.js",
+  "version": "0.5.0",
+  "description": "Movie & TV streamer for desktop (Rust + Tauri) and the web, powered by Stremio-compatible addons (Torrentio, TorrentsDB, ...)",
   "author": "mohamedddt",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "dev:ui": "vite --config vite.desktop.config.ts",
+    "build:ui": "vite build --config vite.desktop.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "electron-vite build",
-    "start": "electron-vite preview",
     "dev:web": "vite --config vite.web.config.ts",
     "build:web": "vite build --config vite.web.config.ts",
     "preview:web": "vite preview --config vite.web.config.ts",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --win",
+    "ffmpeg": "node scripts/prepare-ffmpeg.cjs",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
     "icon": "node scripts/make-icon.cjs"
   },
   "dependencies": {
-    "@ffprobe-installer/ffprobe": "^2.1.2",
-    "electron-updater": "^6.8.9",
-    "fflate": "^0.8.3",
-    "ffmpeg-static": "^5.3.0",
-    "webtorrent": "^2.5.1"
+    "@tauri-apps/api": "^2.9.0"
   },
   "devDependencies": {
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
+    "@tauri-apps/cli": "^2.9.0",
     "@types/node": "^22.7.5",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
-    "electron": "^33.0.2",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "ffmpeg-static": "^5.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.9"
-  },
-  "build": {
-    "appId": "com.streamline.app",
-    "productName": "Streamline",
-    "directories": {
-      "output": "release",
-      "buildResources": "resources"
-    },
-    "files": [
-      "out/**/*",
-      "resources/icon.*"
-    ],
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "resources/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Streamline"
-    },
-    "portable": {
-      "artifactName": "${productName}-Portable-${version}.${ext}"
-    },
-    "npmRebuild": false,
-    "buildDependenciesFromSource": false,
-    "asarUnpack": [
-      "**/node_modules/ffmpeg-static/**",
-      "**/node_modules/@ffprobe-installer/**"
-    ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "mohameddddt",
-        "repo": "Streamline",
-        "releaseType": "release"
-      }
-    ]
-  },
-  "overrides": {
-    "uint8-util": "2.2.6"
   },
   "repository": {
     "type": "git",
