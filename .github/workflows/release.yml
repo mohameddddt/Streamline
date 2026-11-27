@@ -1,0 +1,50 @@
+name: Release desktop app
+
+# Builds the Windows installer and attaches it to a GitHub release when a
+# version tag (v0.5.0, …) is pushed. The app's updater looks for the
+# `*-setup.exe` asset on the latest release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Install scripts fetch the ffmpeg and ffprobe binaries that get bundled.
+      - run: npm ci
+
+      - run: npm run test:rust
+
+      - run: npm run build
+
+      - name: Attach installer to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" src-tauri/target/release/bundle/nsis/*-setup.exe --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streamline-windows
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe

@@ -28,10 +28,8 @@ jobs:
           cache: npm
 
       # The web build needs none of the desktop app's native pieces, so skip
-      # install scripts (Electron's ~100MB binary download, ffmpeg, etc.).
+      # install scripts (the ffmpeg/ffprobe binary downloads).
       - run: npm ci --ignore-scripts
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 
       - run: npm run build:web
 
