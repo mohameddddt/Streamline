@@ -127,10 +127,16 @@ function extraNames(catalog: { extra?: { name: string }[]; extraSupported?: stri
 /** Chromium only accepts WebVTT in a text track, and most addons serve SubRip. */
 export function srtToVtt(body: string): string {
   body = body.replace(/^﻿/, '').replace(/\r\n|\r/g, '\n')
-  if (body.startsWith('WEBVTT')) return body
+  if (body.trimStart().startsWith('WEBVTT')) return body
+  const pad = (h: string, m: string, s: string, ms: string): string =>
+    `${h.padStart(2, '0')}:${m}:${s}.${ms.padEnd(3, '0').slice(0, 3)}`
   const converted = body
-    .replace(/^\d+\n(?=\d{2}:\d{2}:\d{2})/gm, '')
-    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2')
+    // Cue numbers go; so does anything after the end time (SRT position hints).
+    .replace(/^\d+\n(?=\d{1,2}:\d{2}:\d{2})/gm, '')
+    .replace(
+      /^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3}).*$/gm,
+      (_m, h1, m1, s1, f1, h2, m2, s2, f2) => `${pad(h1, m1, s1, f1)} --> ${pad(h2, m2, s2, f2)}`
+    )
   return `WEBVTT\n\n${converted}`
 }
 
@@ -385,9 +391,22 @@ export function createAddonClient(options: AddonClientOptions) {
     return null
   }
 
-  async function getStreams(type: string, id: string): Promise<Stream[]> {
+  /**
+   * Every addon's sources. Addons answer at very different speeds, so
+   * `onPartial` hears the list so far each time one does — the page fills in
+   * as they arrive instead of waiting on the slowest for up to 45 seconds.
+   */
+  async function getStreams(
+    type: string,
+    id: string,
+    onPartial?: (streams: Stream[]) => void
+  ): Promise<Stream[]> {
     const manifests = (await getManifests()).filter((m) => supports(m, 'stream', type, id))
-    const jobs = manifests.map(async (m) => {
+    const lists: Stream[][] = manifests.map(() => [])
+    // Debrid / direct-http / local files start instantly, so they lead the list.
+    const instant = (s: Stream): number => Number(Boolean(s.url || s.filePath))
+    const merged = (): Stream[] => lists.flat().sort((a, b) => instant(b) - instant(a))
+    const jobs = manifests.map(async (m, i) => {
       const url =
         `${baseOf(m.transportUrl)}/stream/${encodeURIComponent(type)}/` +
         `${encodeURIComponent(id)}.json`
@@ -397,17 +416,15 @@ export function createAddonClient(options: AddonClientOptions) {
           ? ((await builtin.streams?.(type, id, ctx)) ?? [])
           : ((await fetchJson<{ streams?: Stream[] }>(url, 45000)).streams ?? [])
         // A built-in may name a source itself ("Downloaded"); remote addons never get to.
-        return streams.map((s) => ({ ...s, addonName: (builtin && s.addonName) || m.name, addonId: m.id }))
+        lists[i] = streams.map((s) => ({ ...s, addonName: (builtin && s.addonName) || m.name, addonId: m.id }))
+        if (lists[i].length) onPartial?.(merged())
       } catch (err) {
         noteFailure(m.transportUrl, err)
         console.warn('[addons] stream failed', m.name, (err as Error).message)
-        return [] as Stream[]
       }
     })
-    const lists = await Promise.all(jobs)
-    // Debrid / direct-http / local files start instantly, so they lead the list.
-    const instant = (s: Stream): number => Number(Boolean(s.url || s.filePath))
-    return lists.flat().sort((a, b) => instant(b) - instant(a))
+    await Promise.all(jobs)
+    return merged()
   }
 
   async function getSubtitles(
