@@ -52,6 +52,8 @@ export function SourceSheet({
   const navigate = useNavigate()
   const web = isWeb()
   const [streams, setStreams] = useState<Stream[] | null>(null)
+  /** Every addon has answered (the list fills in as each one does). */
+  const [complete, setComplete] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [starting, setStarting] = useState<string | null>(null)
   const [phase, setPhase] = useState('')
@@ -90,10 +92,12 @@ export function SourceSheet({
   useEffect(() => {
     let alive = true
     setStreams(null)
+    setComplete(false)
     window.api.addons
-      .streams(meta.type, streamId)
+      .streams(meta.type, streamId, (partial) => alive && setStreams(partial))
       .then((list) => alive && setStreams(list))
       .catch((err) => alive && setError(err))
+      .finally(() => alive && setComplete(true))
     return () => {
       alive = false
     }
@@ -158,11 +162,13 @@ export function SourceSheet({
   // "Watch now": go straight to the last source, else the best match.
   useEffect(() => {
     if (!autoPlay || autoStarted.current || !streams || !pref || !lastLoaded) return
+    // The last source can start at once; "best" means best of every addon's answer.
+    if (!complete && !lastRanked) return
     autoStarted.current = true
     const pick = lastRanked?.stream ?? best?.stream
     if (pick) play(pick)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPlay, streams, pref, lastLoaded])
+  }, [autoPlay, streams, pref, lastLoaded, complete])
 
   const download = async (stream: Stream): Promise<void> => {
     const id = idOf(stream)
@@ -320,7 +326,7 @@ export function SourceSheet({
 
         <div className="sheet-list">
           {!streams && !error && <Spinner label="Asking your stream addons…" />}
-          {streams && streams.length === 0 && !lastRanked && (
+          {complete && streams && streams.length === 0 && !lastRanked && (
             <div className="sheet-empty">
               No sources found. Add a stream addon in Settings, point the local library at your own files, or try
               another episode.
@@ -329,6 +335,13 @@ export function SourceSheet({
           {lastRanked && !filtered && row(lastRanked, 'last')}
           {visible.map((r, i) => row(r, showBest && i === 0 ? 'best' : undefined))}
           {streams && visible.length === 0 && filtered && <div className="sheet-empty">No sources match those filters.</div>}
+          {streams && !complete && !error && (
+            <div className="sheet-empty">
+              <span className="phase">
+                <span className="spinner small" /> More sources on the way…
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
